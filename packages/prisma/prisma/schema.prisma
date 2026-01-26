@@ -1,0 +1,1105 @@
+// Trades Dispatch Platform - Prisma Schema
+// Database: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum UserRole {
+  SMB_USER
+  PRO_USER
+  ADMIN
+  OPERATOR
+}
+
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  DENIED
+  EXPIRED
+}
+
+enum JobStatus {
+  DRAFT
+  DISPATCHED
+  ACCEPTED
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum DispatchAttemptStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  TIMEOUT
+  CANCELLED
+}
+
+enum BookingMode {
+  EXACT
+  WINDOW
+}
+
+enum BookingStatus {
+  PENDING_CONFIRMATION
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+enum ConsentType {
+  TRANSACTIONAL_SMS
+  MARKETING_SMS
+  TRANSACTIONAL_EMAIL
+  MARKETING_EMAIL
+  CALL_RECORDING
+}
+
+enum ScopeType {
+  GLOBAL
+  REGION
+  ORG
+  SERVICE_CATEGORY
+}
+
+enum MessageSender {
+  SMB
+  PRO
+  OPERATOR
+  SYSTEM
+}
+
+enum NotificationChannel {
+  SMS
+  EMAIL
+  PUSH
+  IN_APP
+}
+
+enum AttachmentType {
+  BEFORE_PHOTO
+  AFTER_PHOTO
+  DOCUMENT
+  OTHER
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+enum LeadSource {
+  WEB_FORM
+  WEBHOOK
+  EMAIL
+  PHONE
+  MANUAL
+}
+
+enum LeadStatus {
+  RAW
+  NORMALIZED
+  CONVERTED
+  DUPLICATE
+  INVALID
+}
+
+enum AgentMode {
+  INBOUND_ONLY
+  INBOUND_OUTBOUND
+}
+
+enum PortfolioVisibility {
+  PRIVATE
+  PUBLIC
+}
+
+enum BoostStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+// ============================================
+// IDENTITY & RBAC
+// ============================================
+
+model User {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  passwordHash      String
+  firstName         String?
+  lastName          String?
+  phone             String?
+  role              UserRole  @default(SMB_USER)
+  emailVerified     Boolean   @default(false)
+  emailVerifiedAt   DateTime?
+  passwordResetToken String?
+  passwordResetExpiry DateTime?
+  lastLoginAt       DateTime?
+  isActive          Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  proProfile        ProProfile?
+  orgMemberships    OrgMember[]
+  jobs              Job[]           @relation("JobCreator")
+  consents          Consent[]
+  agentSessions     AgentSession[]
+  auditLogs         AuditLog[]      @relation("AuditActor")
+  refreshTokens     RefreshToken[]
+  preferredContractorsAsSMB PreferredContractor[] @relation("SMBPreferred")
+  sentMessages      Message[]       @relation("MessageSender")
+  notifications     NotificationLog[]
+
+  @@index([email])
+  @@index([role])
+}
+
+model RefreshToken {
+  id          String   @id @default(cuid())
+  token       String   @unique
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  revokedAt   DateTime?
+
+  @@index([userId])
+  @@index([token])
+}
+
+// ============================================
+// ORGANIZATIONS & PROS
+// ============================================
+
+model Region {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  code        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  featureFlags  FeatureFlag[]
+  policies      Policy[]
+  proProfiles   ProProfile[]
+
+  @@index([code])
+}
+
+model ServiceCategory {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  code        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  featureFlags      FeatureFlag[]
+  policies          Policy[]
+  proProfiles       ProProfile[]  @relation("ProServiceCategories")
+  jobs              Job[]
+  verificationChecklists VerificationChecklist[]
+
+  @@index([code])
+}
+
+model Org {
+  id            String   @id @default(cuid())
+  name          String
+  legalName     String?
+  taxId         String?
+  phone         String?
+  email         String?
+  website       String?
+  addressLine1  String?
+  addressLine2  String?
+  city          String?
+  province      String?
+  postalCode    String?
+  country       String   @default("CA")
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  members       OrgMember[]
+  featureFlags  FeatureFlag[]
+  policies      Policy[]
+  proProfiles   ProProfile[]
+
+  @@index([name])
+}
+
+model OrgMember {
+  id        String   @id @default(cuid())
+  orgId     String
+  org       Org      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      String   @default("member") // owner, admin, member
+  isActive  Boolean  @default(true)
+  joinedAt  DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([orgId, userId])
+  @@index([orgId])
+  @@index([userId])
+}
+
+model ProProfile {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orgId               String?
+  org                 Org?     @relation(fields: [orgId], references: [id])
+  regionId            String?
+  region              Region?  @relation(fields: [regionId], references: [id])
+
+  // Business Info
+  businessName        String?
+  businessPhone       String?
+  businessEmail       String?
+  bio                 String?
+  yearsExperience     Int?
+
+  // Verification
+  verificationStatus  VerificationStatus @default(PENDING)
+  verifiedAt          DateTime?
+
+  // Metrics (for ranking)
+  avgResponseMinutes  Float?
+  completionRate      Float?
+  totalJobsCompleted  Int      @default(0)
+
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // Relations
+  serviceCategories   ServiceCategory[] @relation("ProServiceCategories")
+  serviceArea         ServiceArea?
+  serviceHours        ServiceHours[]
+  verificationRecords VerificationRecord[]
+  dispatchAttempts    DispatchAttempt[]
+  dispatchAssignments DispatchAssignment[]
+  availabilityRules   AvailabilityRule[]
+  bookings            Booking[]
+  preferredByContractors PreferredContractor[] @relation("ProPreferred")
+  portfolioItems      PortfolioItem[]
+
+  @@index([userId])
+  @@index([orgId])
+  @@index([verificationStatus])
+}
+
+model ServiceArea {
+  id          String   @id @default(cuid())
+  proProfileId String  @unique
+  proProfile  ProProfile @relation(fields: [proProfileId], references: [id], onDelete: Cascade)
+  centerLat   Float
+  centerLng   Float
+  radiusKm    Float
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([centerLat, centerLng])
+}
+
+model ServiceHours {
+  id           String    @id @default(cuid())
+  proProfileId String
+  proProfile   ProProfile @relation(fields: [proProfileId], references: [id], onDelete: Cascade)
+  dayOfWeek    DayOfWeek
+  startTime    String    // HH:mm format
+  endTime      String    // HH:mm format
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([proProfileId, dayOfWeek])
+  @@index([proProfileId])
+}
+
+// ============================================
+// VERIFICATION & COMPLIANCE
+// ============================================
+
+model VerificationChecklist {
+  id                String   @id @default(cuid())
+  serviceCategoryId String
+  serviceCategory   ServiceCategory @relation(fields: [serviceCategoryId], references: [id], onDelete: Cascade)
+  documentType      String   // e.g., "LICENSE", "INSURANCE", "WSIB"
+  name              String
+  description       String?
+  isRequired        Boolean  @default(true)
+  expiryRequired    Boolean  @default(false)
+  sortOrder         Int      @default(0)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([serviceCategoryId, documentType])
+  @@index([serviceCategoryId])
+}
+
+model VerificationRecord {
+  id             String             @id @default(cuid())
+  proProfileId   String
+  proProfile     ProProfile         @relation(fields: [proProfileId], references: [id], onDelete: Cascade)
+  status         VerificationStatus @default(PENDING)
+  reviewedById   String?
+  reviewedAt     DateTime?
+  reviewNotes    String?
+  submittedAt    DateTime           @default(now())
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  // Relations
+  documents      VerificationDocument[]
+
+  @@index([proProfileId])
+  @@index([status])
+}
+
+model VerificationDocument {
+  id                   String             @id @default(cuid())
+  verificationRecordId String
+  verificationRecord   VerificationRecord @relation(fields: [verificationRecordId], references: [id], onDelete: Cascade)
+  documentType         String             // LICENSE, INSURANCE, WSIB, etc.
+  fileName             String
+  fileUrl              String
+  fileSize             Int?
+  mimeType             String?
+  expiryDate           DateTime?
+  status               VerificationStatus @default(PENDING)
+  reviewNotes          String?
+  uploadedAt           DateTime           @default(now())
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@index([verificationRecordId])
+  @@index([documentType])
+}
+
+// ============================================
+// FEATURE FLAGS & POLICIES
+// ============================================
+
+model FeatureFlag {
+  id                String    @id @default(cuid())
+  key               String
+  description       String?
+  enabled           Boolean   @default(false)
+  scopeType         ScopeType @default(GLOBAL)
+  regionId          String?
+  region            Region?   @relation(fields: [regionId], references: [id], onDelete: Cascade)
+  orgId             String?
+  org               Org?      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  serviceCategoryId String?
+  serviceCategory   ServiceCategory? @relation(fields: [serviceCategoryId], references: [id], onDelete: Cascade)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  createdById       String?
+
+  @@unique([key, scopeType, regionId, orgId, serviceCategoryId])
+  @@index([key])
+  @@index([scopeType])
+}
+
+model Policy {
+  id                String    @id @default(cuid())
+  key               String
+  description       String?
+  value             Json      // JSON value for flexible configuration
+  scopeType         ScopeType @default(GLOBAL)
+  regionId          String?
+  region            Region?   @relation(fields: [regionId], references: [id], onDelete: Cascade)
+  orgId             String?
+  org               Org?      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  serviceCategoryId String?
+  serviceCategory   ServiceCategory? @relation(fields: [serviceCategoryId], references: [id], onDelete: Cascade)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  createdById       String?
+
+  @@unique([key, scopeType, regionId, orgId, serviceCategoryId])
+  @@index([key])
+  @@index([scopeType])
+}
+
+// ============================================
+// CONSENT
+// ============================================
+
+model Consent {
+  id          String      @id @default(cuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        ConsentType
+  granted     Boolean     @default(false)
+  grantedAt   DateTime?
+  revokedAt   DateTime?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@unique([userId, type])
+  @@index([userId])
+}
+
+// ============================================
+// LEAD INTAKE
+// ============================================
+
+model LeadRaw {
+  id          String     @id @default(cuid())
+  source      LeadSource
+  rawPayload  Json
+  ipAddress   String?
+  userAgent   String?
+  receivedAt  DateTime   @default(now())
+  processedAt DateTime?
+  createdAt   DateTime   @default(now())
+
+  // Relations
+  normalizedLead LeadNormalized?
+
+  @@index([source])
+  @@index([receivedAt])
+}
+
+model LeadNormalized {
+  id                String     @id @default(cuid())
+  leadRawId         String?    @unique
+  leadRaw           LeadRaw?   @relation(fields: [leadRawId], references: [id])
+  status            LeadStatus @default(NORMALIZED)
+
+  // Parsed fields
+  contactName       String?
+  contactEmail      String?
+  contactPhone      String?
+  businessName      String?
+  serviceAddress    String?
+  serviceLat        Float?
+  serviceLng        Float?
+  serviceCategory   String?
+  description       String?
+  preferredDateStart DateTime?
+  preferredDateEnd  DateTime?
+  urgency           String?    // LOW, NORMAL, HIGH, EMERGENCY
+
+  // Deduplication
+  fingerprint       String?    // Hash for duplicate detection
+  duplicateOfId     String?
+
+  // Conversion
+  convertedToJobId  String?    @unique
+  convertedToJob    Job?       @relation(fields: [convertedToJobId], references: [id])
+  convertedAt       DateTime?
+
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  @@index([status])
+  @@index([fingerprint])
+  @@index([contactEmail])
+}
+
+// ============================================
+// JOBS & CRM
+// ============================================
+
+model Job {
+  id                  String    @id @default(cuid())
+  jobNumber           String    @unique @default(cuid())
+  createdById         String
+  createdBy           User      @relation("JobCreator", fields: [createdById], references: [id])
+  serviceCategoryId   String
+  serviceCategory     ServiceCategory @relation(fields: [serviceCategoryId], references: [id])
+  status              JobStatus @default(DRAFT)
+
+  // Contact Info
+  contactName         String
+  contactEmail        String?
+  contactPhone        String
+  businessName        String?
+
+  // Service Location
+  serviceAddressLine1 String
+  serviceAddressLine2 String?
+  serviceCity         String
+  serviceProvince     String
+  servicePostalCode   String
+  serviceCountry      String    @default("CA")
+  serviceLat          Float?
+  serviceLng          Float?
+
+  // Job Details
+  title               String?
+  description         String
+  preferredDateStart  DateTime?
+  preferredDateEnd    DateTime?
+  urgency             String    @default("NORMAL")
+  estimatedDuration   Int?      // minutes
+
+  // Assignment
+  assignedProId       String?
+
+  // Timestamps
+  dispatchedAt        DateTime?
+  acceptedAt          DateTime?
+  scheduledAt         DateTime?
+  startedAt           DateTime?
+  completedAt         DateTime?
+  cancelledAt         DateTime?
+
+  // Metadata
+  internalNotes       String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  // Relations
+  fromLead            LeadNormalized?
+  attachments         JobAttachment[]
+  dispatchAttempts    DispatchAttempt[]
+  dispatchAssignment  DispatchAssignment?
+  bookings            Booking[]
+  messageThread       MessageThread?
+  pipelineStage       PipelineStage?  @relation(fields: [pipelineStageId], references: [id])
+  pipelineStageId     String?
+  tasks               Task[]
+  reminders           Reminder[]
+  portfolioItems      PortfolioItem[]
+
+  @@index([createdById])
+  @@index([serviceCategoryId])
+  @@index([status])
+  @@index([jobNumber])
+}
+
+model JobAttachment {
+  id          String         @id @default(cuid())
+  jobId       String
+  job         Job            @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  type        AttachmentType
+  fileName    String
+  fileUrl     String
+  fileSize    Int?
+  mimeType    String?
+  uploadedById String?
+  uploadedAt  DateTime       @default(now())
+  createdAt   DateTime       @default(now())
+
+  @@index([jobId])
+  @@index([type])
+}
+
+model PipelineStage {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  color       String?
+  sortOrder   Int      @default(0)
+  isDefault   Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  jobs        Job[]
+
+  @@index([sortOrder])
+}
+
+model Task {
+  id          String    @id @default(cuid())
+  jobId       String
+  job         Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  dueDate     DateTime?
+  completed   Boolean   @default(false)
+  completedAt DateTime?
+  assignedTo  String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([jobId])
+  @@index([dueDate])
+}
+
+model Reminder {
+  id          String   @id @default(cuid())
+  jobId       String
+  job         Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  title       String
+  message     String?
+  remindAt    DateTime
+  sent        Boolean  @default(false)
+  sentAt      DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([jobId])
+  @@index([remindAt])
+}
+
+model JobTemplate {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  categoryCode    String?  // Service category code
+  templateContent Json     // Template fields/structure
+  estimatedDuration Int?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([categoryCode])
+}
+
+// ============================================
+// DISPATCH ENGINE
+// ============================================
+
+model DeclineReason {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  label       String
+  description String?
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  dispatchAttempts DispatchAttempt[]
+
+  @@index([code])
+}
+
+model DispatchAttempt {
+  id              String                @id @default(cuid())
+  jobId           String
+  job             Job                   @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  proProfileId    String
+  proProfile      ProProfile            @relation(fields: [proProfileId], references: [id])
+  attemptNumber   Int
+  status          DispatchAttemptStatus @default(PENDING)
+  declineReasonId String?
+  declineReason   DeclineReason?        @relation(fields: [declineReasonId], references: [id])
+  declineNotes    String?
+  dispatchedAt    DateTime              @default(now())
+  respondedAt     DateTime?
+  slaDeadline     DateTime
+  ranking         Float?                // Score used for this attempt
+  distance        Float?                // Distance in km
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@unique([jobId, proProfileId])
+  @@index([jobId])
+  @@index([proProfileId])
+  @@index([status])
+}
+
+model DispatchAssignment {
+  id           String     @id @default(cuid())
+  jobId        String     @unique
+  job          Job        @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  proProfileId String
+  proProfile   ProProfile @relation(fields: [proProfileId], references: [id])
+  assignedAt   DateTime   @default(now())
+  assignedBy   String?    // User ID if manual assignment
+  isManual     Boolean    @default(false)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([proProfileId])
+}
+
+// ============================================
+// BOOKING ENGINE
+// ============================================
+
+model AvailabilityRule {
+  id           String    @id @default(cuid())
+  proProfileId String
+  proProfile   ProProfile @relation(fields: [proProfileId], references: [id], onDelete: Cascade)
+  dayOfWeek    DayOfWeek
+  slots        Json      // Array of {startTime, endTime} objects
+  exceptions   Json?     // Specific dates with overrides
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([proProfileId, dayOfWeek])
+  @@index([proProfileId])
+}
+
+model BookingPolicy {
+  id                String    @id @default(cuid())
+  scopeType         ScopeType @default(GLOBAL)
+  regionId          String?
+  orgId             String?
+  serviceCategoryId String?
+
+  // Policy values
+  leadTimeMinutes   Int       @default(60)      // Minimum advance booking time
+  bufferMinutes     Int       @default(15)      // Buffer between bookings
+  maxPerDay         Int       @default(10)      // Max bookings per day
+  cancellationHours Int       @default(24)      // Hours before for free cancellation
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([scopeType])
+}
+
+model Booking {
+  id           String        @id @default(cuid())
+  jobId        String
+  job          Job           @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  proProfileId String
+  proProfile   ProProfile    @relation(fields: [proProfileId], references: [id])
+  mode         BookingMode
+  status       BookingStatus @default(PENDING_CONFIRMATION)
+
+  // For EXACT mode
+  slotStart    DateTime?
+  slotEnd      DateTime?
+
+  // For WINDOW mode
+  windowStart  DateTime?
+  windowEnd    DateTime?
+  confirmedStart DateTime?
+  confirmedEnd DateTime?
+
+  confirmedAt  DateTime?
+  cancelledAt  DateTime?
+  cancelReason String?
+
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([jobId])
+  @@index([proProfileId])
+  @@index([status])
+}
+
+model CalendarConnection {
+  id           String   @id @default(cuid())
+  proProfileId String
+  provider     String   // GOOGLE, OUTLOOK, etc.
+  accessToken  String?
+  refreshToken String?
+  expiresAt    DateTime?
+  calendarId   String?
+  isActive     Boolean  @default(true)
+  lastSyncAt   DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([proProfileId])
+}
+
+// ============================================
+// PREFERRED CONTRACTORS & BOOST
+// ============================================
+
+model PreferredContractor {
+  id           String     @id @default(cuid())
+  smbUserId    String
+  smbUser      User       @relation("SMBPreferred", fields: [smbUserId], references: [id], onDelete: Cascade)
+  proProfileId String
+  proProfile   ProProfile @relation("ProPreferred", fields: [proProfileId], references: [id], onDelete: Cascade)
+  notes        String?
+  createdAt    DateTime   @default(now())
+
+  @@unique([smbUserId, proProfileId])
+  @@index([smbUserId])
+  @@index([proProfileId])
+}
+
+model BoostCampaign {
+  id           String      @id @default(cuid())
+  proProfileId String
+  name         String
+  budgetCents  Int
+  spentCents   Int         @default(0)
+  status       BoostStatus @default(ACTIVE)
+  startDate    DateTime
+  endDate      DateTime?
+  targeting    Json?       // Targeting criteria
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  // Relations
+  ledgerEntries BoostLedger[]
+
+  @@index([proProfileId])
+  @@index([status])
+}
+
+model BoostLedger {
+  id         String        @id @default(cuid())
+  campaignId String
+  campaign   BoostCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  amountCents Int
+  type       String        // CHARGE, REFUND, ADJUSTMENT
+  description String?
+  createdAt  DateTime      @default(now())
+
+  @@index([campaignId])
+}
+
+// ============================================
+// COMMUNICATIONS HUB
+// ============================================
+
+model MessageThread {
+  id        String    @id @default(cuid())
+  jobId     String    @unique
+  job       Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  // Relations
+  messages  Message[]
+
+  @@index([jobId])
+}
+
+model Message {
+  id            String        @id @default(cuid())
+  threadId      String
+  thread        MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  senderId      String?
+  sender        User?         @relation("MessageSender", fields: [senderId], references: [id])
+  senderType    MessageSender
+  content       String
+  attachmentUrl String?
+  readAt        DateTime?
+  createdAt     DateTime      @default(now())
+
+  @@index([threadId])
+  @@index([senderId])
+}
+
+model NotificationLog {
+  id          String              @id @default(cuid())
+  userId      String
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel     NotificationChannel
+  type        String              // notification type/template
+  subject     String?
+  content     String
+  metadata    Json?
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  failedAt    DateTime?
+  failReason  String?
+  createdAt   DateTime            @default(now())
+
+  @@index([userId])
+  @@index([channel])
+  @@index([createdAt])
+}
+
+// ============================================
+// DOCUMENTS & PORTFOLIO
+// ============================================
+
+model PortfolioItem {
+  id           String              @id @default(cuid())
+  proProfileId String
+  proProfile   ProProfile          @relation(fields: [proProfileId], references: [id], onDelete: Cascade)
+  jobId        String?
+  job          Job?                @relation(fields: [jobId], references: [id])
+  title        String?
+  description  String?
+  mediaUrl     String
+  mediaType    String?             // image, video
+  visibility   PortfolioVisibility @default(PRIVATE)
+  optInGranted Boolean             @default(false)
+  optInAt      DateTime?
+  sortOrder    Int                 @default(0)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@index([proProfileId])
+  @@index([visibility])
+}
+
+// ============================================
+// AI AGENT ORCHESTRATOR
+// ============================================
+
+model AgentSession {
+  id            String   @id @default(cuid())
+  userId        String?
+  user          User?    @relation(fields: [userId], references: [id])
+  sessionType   String   // VOICE, CHAT, etc.
+  mode          AgentMode @default(INBOUND_ONLY)
+  startedAt     DateTime @default(now())
+  endedAt       DateTime?
+  metadata      Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  callLogs      CallLog[]
+  conversationTurns ConversationTurn[]
+  toolCallLogs  ToolCallLog[]
+
+  @@index([userId])
+  @@index([sessionType])
+}
+
+model CallLog {
+  id             String       @id @default(cuid())
+  agentSessionId String
+  agentSession   AgentSession @relation(fields: [agentSessionId], references: [id], onDelete: Cascade)
+  direction      String       // INBOUND, OUTBOUND
+  fromNumber     String?
+  toNumber       String?
+  startedAt      DateTime
+  endedAt        DateTime?
+  duration       Int?         // seconds
+  recordingUrl   String?
+  transcriptUrl  String?
+  consentGiven   Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+
+  @@index([agentSessionId])
+}
+
+model ConversationTurn {
+  id             String       @id @default(cuid())
+  agentSessionId String
+  agentSession   AgentSession @relation(fields: [agentSessionId], references: [id], onDelete: Cascade)
+  role           String       // USER, ASSISTANT, SYSTEM
+  content        String
+  contentSanitized String?    // PII redacted version
+  turnNumber     Int
+  createdAt      DateTime     @default(now())
+
+  @@index([agentSessionId])
+}
+
+model ToolCallLog {
+  id             String       @id @default(cuid())
+  agentSessionId String
+  agentSession   AgentSession @relation(fields: [agentSessionId], references: [id], onDelete: Cascade)
+  toolName       String
+  inputParams    Json
+  outputResult   Json?
+  status         String       // SUCCESS, FAILED, DENIED
+  durationMs     Int?
+  errorMessage   String?
+  createdAt      DateTime     @default(now())
+
+  // Relations
+  actionResults  ActionResult[]
+
+  @@index([agentSessionId])
+  @@index([toolName])
+}
+
+model ActionResult {
+  id            String      @id @default(cuid())
+  toolCallLogId String
+  toolCallLog   ToolCallLog @relation(fields: [toolCallLogId], references: [id], onDelete: Cascade)
+  actionType    String
+  entityType    String?
+  entityId      String?
+  success       Boolean
+  message       String?
+  createdAt     DateTime    @default(now())
+
+  @@index([toolCallLogId])
+}
+
+// ============================================
+// AUDIT LOGGING
+// ============================================
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  action      String   // e.g., PRO_APPROVED, JOB_CREATED, DISPATCH_ACCEPTED
+  actorId     String?
+  actor       User?    @relation("AuditActor", fields: [actorId], references: [id])
+  actorType   String?  // USER, SYSTEM, AGENT
+  targetType  String?  // Entity type affected
+  targetId    String?  // Entity ID affected
+  details     Json?    // Additional context (PII masked)
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@index([action])
+  @@index([actorId])
+  @@index([targetType, targetId])
+  @@index([createdAt])
+}
+
+// ============================================
+// PAYMENT ABSTRACTIONS
+// ============================================
+
+model PaymentAccount {
+  id             String   @id @default(cuid())
+  proProfileId   String
+  provider       String   // STRIPE, etc.
+  externalId     String   // Stripe account ID
+  status         String   // PENDING, ACTIVE, DISABLED
+  metadata       Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([proProfileId])
+}
+
+model PaymentTransaction {
+  id             String   @id @default(cuid())
+  jobId          String?
+  externalId     String?  // Stripe payment intent ID
+  type           String   // PAYMENT, REFUND, ESCROW_HOLD, ESCROW_RELEASE
+  amountCents    Int
+  currency       String   @default("CAD")
+  status         String   // PENDING, COMPLETED, FAILED
+  metadata       Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([jobId])
+  @@index([externalId])
+}

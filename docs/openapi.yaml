@@ -1,0 +1,361 @@
+openapi: 3.0.3
+info:
+  title: Trades Dispatch Platform API
+  description: |
+    API documentation for the Trades Dispatch Platform.
+
+    ## Authentication
+    Most endpoints require JWT authentication. Include the access token in the Authorization header:
+    ```
+    Authorization: Bearer <access_token>
+    ```
+
+    ## Rate Limiting
+    - Auth endpoints: 5 requests per minute
+    - General endpoints: 100 requests per minute
+    - Upload endpoints: 20 requests per minute
+
+    ## Roles
+    - SMB_USER: Business requesting services
+    - PRO_USER: Trade professional
+    - ADMIN: Platform administrator
+    - OPERATOR: Dispatcher staff
+
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@tradesdispatch.com
+
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Development server
+  - url: https://api.tradesdispatch.com/api/v1
+    description: Production server
+
+tags:
+  - name: auth
+    description: Authentication and authorization
+  - name: users
+    description: User management
+  - name: pros
+    description: Pro profile management
+  - name: orgs
+    description: Organization management
+  - name: verification
+    description: Verification and compliance
+  - name: jobs
+    description: Job management
+  - name: dispatch
+    description: Dispatch engine
+  - name: booking
+    description: Booking management
+  - name: leads
+    description: Lead intake
+  - name: messages
+    description: Messaging
+  - name: admin
+    description: Admin endpoints
+  - name: operator
+    description: Operator endpoints
+  - name: health
+    description: Health checks
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Health check
+      description: Check the health status of the API and its dependencies
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+        '503':
+          description: Service is unhealthy
+
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Validation error
+        '409':
+          description: Email already exists
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Login user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid credentials
+
+  /jobs:
+    get:
+      tags: [jobs]
+      summary: List jobs
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [DRAFT, DISPATCHED, ACCEPTED, SCHEDULED, IN_PROGRESS, COMPLETED, CANCELLED]
+      responses:
+        '200':
+          description: Jobs list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobsListResponse'
+    post:
+      tags: [jobs]
+      summary: Create a new job
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateJobRequest'
+      responses:
+        '201':
+          description: Job created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy]
+        timestamp:
+          type: string
+          format: date-time
+        version:
+          type: string
+        services:
+          type: object
+          properties:
+            database:
+              type: string
+              enum: [up, down]
+            redis:
+              type: string
+              enum: [up, down]
+
+    RegisterRequest:
+      type: object
+      required:
+        - email
+        - password
+        - firstName
+        - lastName
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+        firstName:
+          type: string
+        lastName:
+          type: string
+        phone:
+          type: string
+        role:
+          type: string
+          enum: [SMB_USER, PRO_USER]
+          default: SMB_USER
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    AuthResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            accessToken:
+              type: string
+            refreshToken:
+              type: string
+            expiresIn:
+              type: integer
+            user:
+              $ref: '#/components/schemas/User'
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        role:
+          type: string
+          enum: [SMB_USER, PRO_USER, ADMIN, OPERATOR]
+
+    CreateJobRequest:
+      type: object
+      required:
+        - serviceCategoryId
+        - contactName
+        - contactPhone
+        - serviceAddressLine1
+        - serviceCity
+        - serviceProvince
+        - servicePostalCode
+        - description
+      properties:
+        serviceCategoryId:
+          type: string
+        contactName:
+          type: string
+        contactEmail:
+          type: string
+        contactPhone:
+          type: string
+        businessName:
+          type: string
+        serviceAddressLine1:
+          type: string
+        serviceAddressLine2:
+          type: string
+        serviceCity:
+          type: string
+        serviceProvince:
+          type: string
+        servicePostalCode:
+          type: string
+        description:
+          type: string
+        preferredDateStart:
+          type: string
+          format: date-time
+        preferredDateEnd:
+          type: string
+          format: date-time
+        urgency:
+          type: string
+          enum: [LOW, NORMAL, HIGH, EMERGENCY]
+          default: NORMAL
+
+    JobResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/Job'
+
+    Job:
+      type: object
+      properties:
+        id:
+          type: string
+        jobNumber:
+          type: string
+        status:
+          type: string
+          enum: [DRAFT, DISPATCHED, ACCEPTED, SCHEDULED, IN_PROGRESS, COMPLETED, CANCELLED]
+        contactName:
+          type: string
+        serviceAddressLine1:
+          type: string
+        serviceCity:
+          type: string
+        description:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    JobsListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Job'
+        meta:
+          type: object
+          properties:
+            page:
+              type: integer
+            pageSize:
+              type: integer
+            total:
+              type: integer
+            totalPages:
+              type: integer

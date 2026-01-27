@@ -1,59 +1,231 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import '@trades-dispatch/ui/globals.css';
+
+/*
+ * Web SMB Portal - Customer/Business Portal Styles
+ * Inherits from the shared design system with SMB-specific customizations
+ */
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.5rem;
-  }
-
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    /* SMB Portal keeps the warm copper primary from the design system */
+    /* Additional SMB-specific tokens can be added here */
   }
 }
 
-@layer base {
-  * {
-    @apply border-border;
+/* === SMB-SPECIFIC PATTERNS === */
+
+/* Job card styling */
+@layer components {
+  .job-card {
+    @apply relative overflow-hidden transition-all duration-200;
+    box-shadow: var(--shadow-sm);
   }
-  body {
-    @apply bg-background text-foreground;
+
+  .job-card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+  }
+
+  .job-card::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: hsl(var(--primary));
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+
+  .job-card:hover::before {
+    opacity: 1;
+  }
+
+  .job-card-urgent::before {
+    background: hsl(var(--destructive));
+    opacity: 1;
+  }
+
+  .job-card-pending::before {
+    background: hsl(var(--warning));
+    opacity: 1;
+  }
+
+  .job-card-complete::before {
+    background: hsl(var(--success));
+    opacity: 1;
+  }
+}
+
+/* Dashboard stat cards */
+@layer components {
+  .stat-card {
+    @apply relative overflow-hidden bg-card rounded-xl border;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .stat-card-icon {
+    @apply absolute -right-4 -bottom-4 opacity-5;
+    font-size: 6rem;
+  }
+
+  .stat-value {
+    @apply text-3xl font-bold tracking-tight;
+    background: linear-gradient(135deg, hsl(var(--foreground)) 0%, hsl(var(--muted-foreground)) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .stat-label {
+    @apply text-sm font-medium text-muted-foreground uppercase tracking-wider;
+    letter-spacing: 0.05em;
+  }
+
+  .stat-trend {
+    @apply inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full;
+  }
+
+  .stat-trend-up {
+    @apply bg-success-50 text-success-600;
+  }
+
+  .stat-trend-down {
+    @apply bg-destructive-50 text-destructive-600;
+  }
+}
+
+/* Quick action buttons */
+@layer components {
+  .quick-action {
+    @apply flex flex-col items-center gap-3 p-6 rounded-xl border bg-card transition-all duration-200;
+    box-shadow: var(--shadow-xs);
+  }
+
+  .quick-action:hover {
+    @apply border-primary/30 bg-primary-50/50;
+    box-shadow: var(--shadow-sm);
+    transform: translateY(-1px);
+  }
+
+  .quick-action-icon {
+    @apply w-12 h-12 rounded-xl flex items-center justify-center;
+    background: linear-gradient(135deg, hsl(var(--primary) / 0.1) 0%, hsl(var(--primary) / 0.05) 100%);
+  }
+
+  .quick-action-icon svg {
+    @apply w-6 h-6 text-primary;
+  }
+}
+
+/* Timeline component */
+@layer components {
+  .timeline {
+    @apply relative pl-8;
+  }
+
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 0.75rem;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: hsl(var(--border));
+  }
+
+  .timeline-item {
+    @apply relative pb-6 last:pb-0;
+  }
+
+  .timeline-dot {
+    @apply absolute -left-8 w-6 h-6 rounded-full border-2 border-background flex items-center justify-center;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .timeline-dot-complete {
+    @apply bg-success text-white;
+  }
+
+  .timeline-dot-current {
+    @apply bg-primary text-white animate-pulse-subtle;
+  }
+
+  .timeline-dot-pending {
+    @apply bg-muted text-muted-foreground;
+  }
+}
+
+/* Pro card (for preferred contractors) */
+@layer components {
+  .pro-card {
+    @apply relative p-4 rounded-xl border bg-card transition-all duration-200;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .pro-card:hover {
+    box-shadow: var(--shadow-md);
+  }
+
+  .pro-avatar {
+    @apply w-14 h-14 rounded-full overflow-hidden border-2 border-primary/20;
+    box-shadow: 0 0 0 3px hsl(var(--background));
+  }
+
+  .pro-badge {
+    @apply absolute -top-2 -right-2 w-6 h-6 rounded-full bg-success flex items-center justify-center;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .pro-rating {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-warning-50 text-warning-600 text-xs font-medium;
+  }
+}
+
+/* Empty state */
+@layer components {
+  .empty-state {
+    @apply flex flex-col items-center justify-center py-16 px-8 text-center;
+  }
+
+  .empty-state-icon {
+    @apply w-20 h-20 rounded-2xl mb-6 flex items-center justify-center;
+    background: linear-gradient(135deg, hsl(var(--muted)) 0%, hsl(var(--background)) 100%);
+  }
+
+  .empty-state-icon svg {
+    @apply w-10 h-10 text-muted-foreground;
+  }
+}
+
+/* Page header with breadcrumb */
+@layer components {
+  .page-header {
+    @apply flex flex-col gap-1 mb-8;
+  }
+
+  .page-title {
+    @apply text-2xl font-bold tracking-tight text-foreground;
+  }
+
+  .page-description {
+    @apply text-muted-foreground;
+  }
+
+  .breadcrumb {
+    @apply flex items-center gap-2 text-sm text-muted-foreground mb-2;
+  }
+
+  .breadcrumb-separator {
+    @apply text-border;
+  }
+
+  .breadcrumb-link {
+    @apply hover:text-foreground transition-colors;
+  }
+
+  .breadcrumb-current {
+    @apply text-foreground font-medium;
   }
 }

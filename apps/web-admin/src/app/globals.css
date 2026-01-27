@@ -1,28 +1,22 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import '@trades-dispatch/ui/globals.css';
 
-:root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
-}
+/*
+ * Web Admin Portal - Platform Administration Styles
+ * Inherits from the shared design system with Admin-specific customizations
+ */
 
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
+    /* Admin portal overrides - uses a purple accent for admin distinction */
+    --primary: 262 83% 58%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 262 83% 58%;
   }
-}
 
-body {
-  color: rgb(var(--foreground-rgb));
-}
-
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
+  .dark {
+    --primary: 263 70% 50%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 263 70% 50%;
   }
 }
 
@@ -33,26 +27,234 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: hsl(var(--muted));
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
+  background: hsl(var(--border));
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #a1a1a1;
+  background: hsl(var(--muted-foreground) / 0.5);
 }
 
-/* Admin-specific styles */
-.admin-gradient {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+/* === ADMIN-SPECIFIC PATTERNS === */
+
+/* Admin gradient header */
+@layer components {
+  .admin-gradient {
+    background: linear-gradient(135deg, hsl(262 83% 58%) 0%, hsl(280 70% 45%) 100%);
+  }
 }
 
-.stat-card-gradient {
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+/* Data table styling */
+@layer components {
+  .data-table {
+    @apply w-full border-collapse;
+  }
+
+  .data-table th {
+    @apply px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider bg-muted/50 border-b;
+  }
+
+  .data-table td {
+    @apply px-4 py-3 text-sm border-b border-border;
+  }
+
+  .data-table tr:hover td {
+    @apply bg-muted/30;
+  }
+
+  .data-table-row-clickable {
+    @apply cursor-pointer transition-colors;
+  }
+
+  .data-table-row-clickable:hover td {
+    @apply bg-muted/50;
+  }
+}
+
+/* Feature flag toggle */
+@layer components {
+  .flag-toggle {
+    @apply relative inline-flex h-6 w-11 items-center rounded-full transition-colors;
+  }
+
+  .flag-toggle-on {
+    @apply bg-success;
+  }
+
+  .flag-toggle-off {
+    @apply bg-muted;
+  }
+
+  .flag-toggle-handle {
+    @apply absolute left-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform;
+  }
+
+  .flag-toggle-on .flag-toggle-handle {
+    @apply translate-x-5;
+  }
+}
+
+/* Policy scope badge */
+@layer components {
+  .scope-badge {
+    @apply inline-flex items-center px-2 py-0.5 text-2xs font-medium rounded;
+  }
+
+  .scope-global {
+    @apply bg-primary/10 text-primary;
+  }
+
+  .scope-region {
+    @apply bg-info/10 text-info;
+  }
+
+  .scope-org {
+    @apply bg-warning/10 text-warning;
+  }
+
+  .scope-category {
+    @apply bg-accent/10 text-accent;
+  }
+}
+
+/* Audit log entry */
+@layer components {
+  .audit-entry {
+    @apply flex items-start gap-4 p-4 border-b border-border last:border-0;
+  }
+
+  .audit-entry:hover {
+    @apply bg-muted/30;
+  }
+
+  .audit-icon {
+    @apply w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0;
+  }
+
+  .audit-icon-auth {
+    @apply bg-info-50 text-info;
+  }
+
+  .audit-icon-job {
+    @apply bg-primary-50 text-primary;
+  }
+
+  .audit-icon-dispatch {
+    @apply bg-warning-50 text-warning;
+  }
+
+  .audit-icon-payment {
+    @apply bg-success-50 text-success;
+  }
+
+  .audit-icon-admin {
+    @apply bg-primary/10 text-primary;
+  }
+
+  .audit-timestamp {
+    @apply text-xs text-muted-foreground font-mono;
+  }
+
+  .audit-actor {
+    @apply text-sm font-medium;
+  }
+
+  .audit-action {
+    @apply text-sm text-muted-foreground;
+  }
+}
+
+/* Pro approval card */
+@layer components {
+  .approval-card {
+    @apply relative bg-card rounded-xl border p-6 transition-all duration-200;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .approval-card:hover {
+    box-shadow: var(--shadow-md);
+  }
+
+  .approval-card-pending {
+    @apply border-l-4 border-l-warning;
+  }
+
+  .approval-card-approved {
+    @apply border-l-4 border-l-success;
+  }
+
+  .approval-card-rejected {
+    @apply border-l-4 border-l-destructive;
+  }
+}
+
+/* Stats dashboard card */
+@layer components {
+  .stats-card {
+    @apply relative overflow-hidden bg-card rounded-xl border p-6;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .stats-card-icon {
+    @apply absolute -right-4 -bottom-4 w-24 h-24 opacity-5;
+  }
+
+  .stats-value {
+    @apply text-3xl font-bold tracking-tight;
+  }
+
+  .stats-label {
+    @apply text-sm text-muted-foreground;
+  }
+
+  .stats-change {
+    @apply inline-flex items-center gap-1 text-xs font-medium mt-2 px-2 py-0.5 rounded-full;
+  }
+
+  .stats-change-up {
+    @apply bg-success-50 text-success-600;
+  }
+
+  .stats-change-down {
+    @apply bg-destructive-50 text-destructive-600;
+  }
+}
+
+/* Config panel */
+@layer components {
+  .config-panel {
+    @apply bg-card rounded-xl border overflow-hidden;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .config-panel-header {
+    @apply flex items-center justify-between px-6 py-4 bg-muted/30 border-b;
+  }
+
+  .config-panel-title {
+    @apply text-sm font-semibold;
+  }
+
+  .config-panel-body {
+    @apply p-6;
+  }
+
+  .config-row {
+    @apply flex items-center justify-between py-4 border-b border-border last:border-0;
+  }
+
+  .config-label {
+    @apply text-sm font-medium;
+  }
+
+  .config-description {
+    @apply text-xs text-muted-foreground mt-0.5;
+  }
 }
 
 /* Animation utilities */

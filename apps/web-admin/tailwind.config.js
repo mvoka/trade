@@ -1,40 +1,33 @@
+const baseConfig = require('@trades-dispatch/ui/tailwind.config');
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  ...baseConfig,
   content: [
     './src/**/*.{js,ts,jsx,tsx,mdx}',
-    '../../packages/ui/src/**/*.{js,ts,jsx,tsx,mdx}',
+    '../../packages/ui/src/**/*.{js,ts,jsx,tsx}',
   ],
   theme: {
+    ...baseConfig.theme,
     extend: {
+      ...baseConfig.theme.extend,
+      // Admin-specific colors
       colors: {
-        primary: {
-          50: '#eff6ff',
-          100: '#dbeafe',
-          200: '#bfdbfe',
-          300: '#93c5fd',
-          400: '#60a5fa',
-          500: '#3b82f6',
-          600: '#2563eb',
-          700: '#1d4ed8',
-          800: '#1e40af',
-          900: '#1e3a8a',
-          950: '#172554',
-        },
+        ...baseConfig.theme.extend.colors,
+        // Admin uses purple primary (defined in globals.css override)
         admin: {
-          50: '#fdf4ff',
-          100: '#fae8ff',
-          200: '#f5d0fe',
-          300: '#f0abfc',
-          400: '#e879f9',
-          500: '#d946ef',
-          600: '#c026d3',
-          700: '#a21caf',
-          800: '#86198f',
-          900: '#701a75',
-          950: '#4a044e',
+          50: 'hsl(262 90% 96%)',
+          100: 'hsl(262 85% 92%)',
+          200: 'hsl(262 80% 85%)',
+          300: 'hsl(262 75% 75%)',
+          400: 'hsl(262 78% 65%)',
+          500: 'hsl(262 83% 58%)',
+          600: 'hsl(262 80% 50%)',
+          700: 'hsl(262 75% 42%)',
+          800: 'hsl(262 70% 35%)',
+          900: 'hsl(262 65% 28%)',
         },
       },
     },
   },
-  plugins: [],
 };

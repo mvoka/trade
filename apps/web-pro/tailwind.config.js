@@ -1,66 +1,33 @@
+const baseConfig = require('@trades-dispatch/ui/tailwind.config');
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  darkMode: ['class'],
+  ...baseConfig,
   content: [
     './src/**/*.{js,ts,jsx,tsx,mdx}',
-    '../../packages/ui/src/**/*.{js,ts,jsx,tsx,mdx}',
+    '../../packages/ui/src/**/*.{js,ts,jsx,tsx}',
   ],
   theme: {
+    ...baseConfig.theme,
     extend: {
+      ...baseConfig.theme.extend,
+      // Pro-specific SLA colors for dispatch views
       colors: {
-        border: 'hsl(var(--border))',
-        input: 'hsl(var(--input))',
-        ring: 'hsl(var(--ring))',
-        background: 'hsl(var(--background))',
-        foreground: 'hsl(var(--foreground))',
-        primary: {
-          DEFAULT: 'hsl(var(--primary))',
-          foreground: 'hsl(var(--primary-foreground))',
-        },
-        secondary: {
-          DEFAULT: 'hsl(var(--secondary))',
-          foreground: 'hsl(var(--secondary-foreground))',
-        },
-        destructive: {
-          DEFAULT: 'hsl(var(--destructive))',
-          foreground: 'hsl(var(--destructive-foreground))',
-        },
-        muted: {
-          DEFAULT: 'hsl(var(--muted))',
-          foreground: 'hsl(var(--muted-foreground))',
-        },
-        accent: {
-          DEFAULT: 'hsl(var(--accent))',
-          foreground: 'hsl(var(--accent-foreground))',
-        },
-        popover: {
-          DEFAULT: 'hsl(var(--popover))',
-          foreground: 'hsl(var(--popover-foreground))',
-        },
-        card: {
-          DEFAULT: 'hsl(var(--card))',
-          foreground: 'hsl(var(--card-foreground))',
-        },
+        ...baseConfig.theme.extend.colors,
         sla: {
-          green: '#22c55e',
-          yellow: '#eab308',
-          orange: '#f97316',
-          red: '#ef4444',
+          green: 'hsl(var(--success))',
+          yellow: 'hsl(var(--warning))',
+          orange: 'hsl(24 90% 50%)',
+          red: 'hsl(var(--destructive))',
         },
         pipeline: {
-          new: '#3b82f6',
-          scheduled: '#8b5cf6',
-          inProgress: '#f97316',
-          completed: '#22c55e',
-          cancelled: '#6b7280',
+          new: 'hsl(var(--info))',
+          scheduled: 'hsl(262 83% 58%)',
+          inProgress: 'hsl(var(--warning))',
+          completed: 'hsl(var(--success))',
+          cancelled: 'hsl(var(--muted-foreground))',
         },
-      },
-      borderRadius: {
-        lg: 'var(--radius)',
-        md: 'calc(var(--radius) - 2px)',
-        sm: 'calc(var(--radius) - 4px)',
       },
     },
   },
-  plugins: [],
 };

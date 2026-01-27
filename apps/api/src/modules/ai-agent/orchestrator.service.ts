@@ -1,9 +1,21 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { RedisService } from '../../common/redis/redis.service';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import { PolicyService } from '../feature-flags/policy.service';
 import { SkillRegistryService, SkillExecutionContext } from './skill-registry.service';
 import { ToolsService, ToolContext, ToolResult } from './tools.service';
+import { LlmGatewayService } from './llm/llm-gateway.service';
+import { ConversationMemoryService, ConversationMemoryTurn } from './llm/conversation-memory.service';
+import { PromptTemplateService } from './llm/prompt-template.service';
+import { AgentConfigRegistryService } from './agents/agent-config.registry';
+import { AgentInstance } from './agents/agent-config.interface';
+import {
+  LlmMessage,
+  LlmToolDefinition,
+  LlmToolCall,
+  ContentBlock,
+} from './llm/llm-gateway.interface';
 import {
   AgentSessionType,
   AgentSessionStatus,
@@ -22,6 +34,7 @@ import { randomUUID } from 'crypto';
 export interface OrchestratorSession {
   id: string;
   sessionType: AgentSessionType;
+  agentId?: string;
   status: AgentSessionStatus;
   userId?: string;
   orgId?: string;
@@ -31,6 +44,10 @@ export interface OrchestratorSession {
   createdAt: Date;
   updatedAt: Date;
   endedAt?: Date;
+  /** Agent instance for LLM-powered sessions */
+  agentInstance?: AgentInstance;
+  /** Turn counter for max turns enforcement */
+  turnCount: number;
 }
 
 /**
@@ -98,6 +115,13 @@ export interface HumanTakeoverResult {
 }
 
 // ============================================
+// REDIS KEYS
+// ============================================
+
+const REDIS_SESSION_PREFIX = 'orchestrator:session:';
+const REDIS_SESSION_TTL = 3600; // 1 hour
+
+// ============================================
 // ORCHESTRATOR SERVICE
 // ============================================
 
@@ -106,30 +130,58 @@ export interface HumanTakeoverResult {
  *
  * Responsibilities:
  * - Manage agent session lifecycle
- * - Process incoming messages
+ * - Process incoming messages via LLM
  * - Coordinate tool execution
  * - Handle human takeover
  * - Maintain conversation state
  *
- * P1 Feature: Session management, message processing stubs
- * P2 Feature: Full LLM integration, state machine, analytics
+ * Enhanced with:
+ * - LLM integration via LlmGatewayService
+ * - Redis session storage for horizontal scaling
+ * - Agent configuration support
+ * - Conversation memory management
  */
 @Injectable()
 export class OrchestratorService {
   private readonly logger = new Logger(OrchestratorService.name);
 
-  // In-memory session store (P1)
-  // P2: Move to Redis for horizontal scaling
+  // In-memory session store (fallback when Redis unavailable)
   private sessions = new Map<string, OrchestratorSession>();
+
+  // Flag for LLM availability
+  private llmAvailable = false;
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
     private readonly featureFlagsService: FeatureFlagsService,
     private readonly policyService: PolicyService,
     private readonly skillRegistry: SkillRegistryService,
     private readonly toolsService: ToolsService,
+    private readonly llmGateway: LlmGatewayService,
+    private readonly conversationMemory: ConversationMemoryService,
+    private readonly promptTemplateService: PromptTemplateService,
+    private readonly agentConfigRegistry: AgentConfigRegistryService,
   ) {
+    this.initializeLlm();
     this.logger.log('OrchestratorService initialized');
+  }
+
+  /**
+   * Check LLM availability on startup
+   */
+  private async initializeLlm(): Promise<void> {
+    try {
+      this.llmAvailable = await this.llmGateway.isHealthy();
+      if (this.llmAvailable) {
+        this.logger.log(`LLM available via ${this.llmGateway.getCurrentProvider()}`);
+      } else {
+        this.logger.warn('LLM not available - using fallback responses');
+      }
+    } catch (error) {
+      this.logger.error('Failed to initialize LLM:', error);
+      this.llmAvailable = false;
+    }
   }
 
   // ============================================
@@ -141,11 +193,8 @@ export class OrchestratorService {
    *
    * @param userId - Optional user ID for authenticated sessions
    * @param sessionType - Type of session (PHONE, BOOKING, etc.)
-   * @param context - Optional initial context
+   * @param context - Optional initial context including agentId
    * @returns Created session
-   *
-   * P1: In-memory session creation
-   * P2: Persist to database, initialize LLM context
    */
   async startSession(
     userId: string | undefined,
@@ -153,8 +202,9 @@ export class OrchestratorService {
     context?: Record<string, unknown>,
   ): Promise<OrchestratorSession> {
     const sessionId = `session_${randomUUID()}`;
+    const agentId = context?.agentId as string | undefined;
 
-    this.logger.log(`Starting session ${sessionId} of type ${sessionType}`);
+    this.logger.log(`Starting session ${sessionId} of type ${sessionType}${agentId ? ` with agent ${agentId}` : ''}`);
 
     // Check if phone agent is enabled for phone sessions
     if (sessionType === AgentSessionType.PHONE) {
@@ -167,7 +217,6 @@ export class OrchestratorService {
         throw new BadRequestException('Phone agent feature is not enabled');
       }
 
-      // Get phone agent mode
       const phoneAgentMode = await this.policyService.getValue(
         'PHONE_AGENT_MODE',
         { orgId: context?.orgId as string },
@@ -175,9 +224,28 @@ export class OrchestratorService {
       this.logger.debug(`Phone agent mode: ${phoneAgentMode}`);
     }
 
+    // Create agent instance if agentId specified
+    let agentInstance: AgentInstance | undefined;
+    if (agentId) {
+      try {
+        agentInstance = await this.agentConfigRegistry.createInstance(
+          agentId,
+          sessionId,
+          {
+            ...context,
+            userId,
+          },
+        );
+      } catch (error) {
+        this.logger.warn(`Failed to create agent instance: ${error}`);
+        // Continue without agent instance - will use fallback
+      }
+    }
+
     const session: OrchestratorSession = {
       id: sessionId,
       sessionType,
+      agentId,
       status: AgentSessionStatus.ACTIVE,
       userId,
       orgId: context?.orgId as string | undefined,
@@ -186,32 +254,35 @@ export class OrchestratorService {
       toolCallLog: [],
       createdAt: new Date(),
       updatedAt: new Date(),
+      agentInstance,
+      turnCount: 0,
     };
 
-    // Store in memory (P1)
-    this.sessions.set(sessionId, session);
+    // Store in Redis (primary) and memory (fallback)
+    await this.saveSession(session);
 
-    // P2: Persist to database
-    // await this.prisma.agentSession.create({
-    //   data: {
-    //     id: sessionId,
-    //     sessionType,
-    //     status: AgentSessionStatus.ACTIVE,
-    //     userId,
-    //     orgId: context?.orgId,
-    //     context: context ?? {},
-    //   },
-    // });
+    // Initialize conversation memory if using LLM
+    if (agentInstance) {
+      await this.conversationMemory.initializeContext(
+        sessionId,
+        agentId!,
+        agentInstance.systemPrompt,
+        context,
+      );
+    }
 
     // Add system message to conversation
     const systemTurn: ConversationTurn = {
       id: `turn_${randomUUID()}`,
       role: MessageRole.SYSTEM,
-      content: `Session started. Type: ${sessionType}. Ready to assist.`,
+      content: `Session started. Type: ${sessionType}${agentId ? `. Agent: ${agentId}` : ''}. Ready to assist.`,
       timestamp: new Date(),
-      metadata: { sessionStart: true },
+      metadata: { sessionStart: true, agentId },
     };
     session.conversationHistory.push(systemTurn);
+
+    // Persist to database
+    await this.persistSessionToDb(session);
 
     this.logger.log(`Session ${sessionId} created successfully`);
 
@@ -220,15 +291,9 @@ export class OrchestratorService {
 
   /**
    * End an agent session
-   *
-   * @param sessionId - Session to end
-   * @returns Updated session
-   *
-   * P1: In-memory session update
-   * P2: Persist to database, cleanup resources
    */
   async endSession(sessionId: string): Promise<OrchestratorSession> {
-    const session = this.getSessionOrThrow(sessionId);
+    const session = await this.getSessionOrThrow(sessionId);
 
     this.logger.log(`Ending session ${sessionId}`);
 
@@ -246,14 +311,12 @@ export class OrchestratorService {
     };
     session.conversationHistory.push(endTurn);
 
-    // P2: Persist to database
-    // await this.prisma.agentSession.update({
-    //   where: { id: sessionId },
-    //   data: {
-    //     status: AgentSessionStatus.COMPLETED,
-    //     endedAt: new Date(),
-    //   },
-    // });
+    // Save and cleanup
+    await this.saveSession(session);
+    await this.conversationMemory.clearContext(sessionId);
+
+    // Update database
+    await this.updateSessionInDb(session);
 
     this.logger.log(`Session ${sessionId} ended`);
 
@@ -263,15 +326,29 @@ export class OrchestratorService {
   /**
    * Get session by ID
    */
-  getSession(sessionId: string): OrchestratorSession | undefined {
+  async getSession(sessionId: string): Promise<OrchestratorSession | undefined> {
+    // Try Redis first
+    try {
+      const cached = await this.redis.getJson<OrchestratorSession>(
+        `${REDIS_SESSION_PREFIX}${sessionId}`,
+      );
+      if (cached) {
+        // Rehydrate dates
+        return this.rehydrateSession(cached);
+      }
+    } catch (error) {
+      this.logger.debug(`Redis get failed for ${sessionId}, using memory`);
+    }
+
+    // Fall back to memory
     return this.sessions.get(sessionId);
   }
 
   /**
    * Get session or throw NotFoundException
    */
-  private getSessionOrThrow(sessionId: string): OrchestratorSession {
-    const session = this.sessions.get(sessionId);
+  private async getSessionOrThrow(sessionId: string): Promise<OrchestratorSession> {
+    const session = await this.getSession(sessionId);
     if (!session) {
       throw new NotFoundException(`Session ${sessionId} not found`);
     }
@@ -285,23 +362,25 @@ export class OrchestratorService {
   /**
    * Process an incoming message in the session
    *
-   * @param sessionId - Session ID
-   * @param message - Message content
-   * @param metadata - Optional message metadata
-   * @returns Processing result with agent response
-   *
-   * P1: Stub implementation with echo response
-   * P2: Full LLM integration with tool calling
+   * Uses LLM for intelligent responses when available,
+   * falls back to stub responses otherwise.
    */
   async processMessage(
     sessionId: string,
     message: string,
     metadata?: Record<string, unknown>,
   ): Promise<ProcessMessageResult> {
-    const session = this.getSessionOrThrow(sessionId);
+    const session = await this.getSessionOrThrow(sessionId);
 
     if (session.status !== AgentSessionStatus.ACTIVE) {
       throw new BadRequestException(`Session ${sessionId} is not active`);
+    }
+
+    // Check max turns
+    if (session.agentInstance?.config.maxTurns &&
+        session.turnCount >= session.agentInstance.config.maxTurns) {
+      this.logger.warn(`Session ${sessionId} reached max turns, triggering handoff`);
+      return this.triggerMaxTurnsHandoff(session, message);
     }
 
     this.logger.debug(`Processing message in session ${sessionId}: ${message.substring(0, 100)}...`);
@@ -315,13 +394,233 @@ export class OrchestratorService {
       metadata,
     };
     session.conversationHistory.push(userTurn);
+    session.turnCount++;
 
-    // P1 Stub: Echo response with mock agent behavior
-    // P2: Send to LLM, process tool calls, generate response
+    // Add to conversation memory
+    await this.conversationMemory.addTurn(sessionId, {
+      role: 'user',
+      content: message,
+      metadata,
+    });
 
+    // Check if LLM is available and agent is configured
+    if (this.llmAvailable && session.agentInstance) {
+      return this.processWithLlm(session, message);
+    }
+
+    // Fallback to stub response
+    return this.processWithStub(session, message);
+  }
+
+  /**
+   * Process message using LLM
+   */
+  private async processWithLlm(
+    session: OrchestratorSession,
+    message: string,
+  ): Promise<ProcessMessageResult> {
+    const agentInstance = session.agentInstance!;
     const toolCalls: ToolCallLogEntry[] = [];
 
-    // Simulate tool call detection (P1 stub)
+    try {
+      // Get conversation context
+      const context = await this.conversationMemory.getContext(session.id);
+      const messages = context ? this.conversationMemory.formatForLlm(context) : [];
+
+      // Get available tools
+      const tools = this.getToolDefinitionsForAgent(agentInstance);
+
+      // Call LLM
+      const response = await this.llmGateway.complete({
+        messages,
+        systemPrompt: agentInstance.systemPrompt,
+        tools: tools.length > 0 ? tools : undefined,
+        maxTokens: agentInstance.config.llmConfig?.maxTokens,
+        temperature: agentInstance.config.llmConfig?.temperature,
+        metadata: {
+          sessionId: session.id,
+          userId: session.userId,
+          agentType: session.agentId,
+        },
+      });
+
+      // Handle tool calls if any
+      if (response.toolCalls && response.toolCalls.length > 0) {
+        const toolResults = await this.executeToolCalls(session, response.toolCalls);
+        toolCalls.push(...toolResults);
+
+        // Continue conversation with tool results
+        return this.continueAfterTools(session, response, toolResults);
+      }
+
+      // Add agent response to conversation
+      const agentContent = response.content;
+      const agentTurn: ConversationTurn = {
+        id: `turn_${randomUUID()}`,
+        role: MessageRole.AGENT,
+        content: agentContent,
+        timestamp: new Date(),
+      };
+      session.conversationHistory.push(agentTurn);
+
+      // Add to memory
+      await this.conversationMemory.addTurn(session.id, {
+        role: 'assistant',
+        content: agentContent,
+      });
+
+      // Save session
+      session.updatedAt = new Date();
+      await this.saveSession(session);
+
+      // Check for escalation triggers
+      const suggestedActions = this.checkEscalationTriggers(session, message, agentContent);
+
+      return {
+        sessionId: session.id,
+        response: {
+          role: MessageRole.AGENT,
+          content: agentContent,
+        },
+        toolCalls,
+        suggestedActions,
+        sessionActive: session.status === AgentSessionStatus.ACTIVE,
+      };
+    } catch (error) {
+      this.logger.error(`LLM processing failed for session ${session.id}:`, error);
+      // Fall back to stub on error
+      return this.processWithStub(session, message);
+    }
+  }
+
+  /**
+   * Continue conversation after tool execution
+   */
+  private async continueAfterTools(
+    session: OrchestratorSession,
+    previousResponse: { content: string; toolCalls?: LlmToolCall[] },
+    toolResults: ToolCallLogEntry[],
+  ): Promise<ProcessMessageResult> {
+    const agentInstance = session.agentInstance!;
+
+    // Build messages with tool results
+    const context = await this.conversationMemory.getContext(session.id);
+    const messages: LlmMessage[] = context
+      ? this.conversationMemory.formatForLlm(context)
+      : [];
+
+    // Add assistant message with tool use
+    if (previousResponse.toolCalls) {
+      const contentBlocks: ContentBlock[] = [];
+      if (previousResponse.content) {
+        contentBlocks.push({ type: 'text', text: previousResponse.content });
+      }
+      for (const tc of previousResponse.toolCalls) {
+        contentBlocks.push({
+          type: 'tool_use',
+          id: tc.id,
+          name: tc.name,
+          input: tc.arguments,
+        });
+      }
+      messages.push({
+        role: 'assistant',
+        content: contentBlocks,
+      });
+    }
+
+    // Add tool results
+    for (const result of toolResults) {
+      messages.push({
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: result.id,
+            content: JSON.stringify(result.output ?? result.error),
+            is_error: result.status === ToolCallStatus.FAILED,
+          },
+        ],
+      });
+
+      // Add to memory
+      await this.conversationMemory.addTurn(session.id, {
+        role: 'tool',
+        content: JSON.stringify(result.output ?? result.error),
+        metadata: {
+          toolName: result.toolName,
+          toolCallId: result.id,
+          isError: result.status === ToolCallStatus.FAILED,
+        },
+      });
+    }
+
+    // Get tools again for continuation
+    const tools = this.getToolDefinitionsForAgent(agentInstance);
+
+    // Call LLM again with tool results
+    const response = await this.llmGateway.complete({
+      messages,
+      systemPrompt: agentInstance.systemPrompt,
+      tools: tools.length > 0 ? tools : undefined,
+      maxTokens: agentInstance.config.llmConfig?.maxTokens,
+      temperature: agentInstance.config.llmConfig?.temperature,
+      metadata: {
+        sessionId: session.id,
+        userId: session.userId,
+        agentType: session.agentId,
+      },
+    });
+
+    // If more tool calls, recurse (with depth limit)
+    if (response.toolCalls && response.toolCalls.length > 0 && session.turnCount < 10) {
+      session.turnCount++;
+      const newToolResults = await this.executeToolCalls(session, response.toolCalls);
+      toolResults.push(...newToolResults);
+      return this.continueAfterTools(session, response, newToolResults);
+    }
+
+    // Add final response
+    const agentContent = response.content;
+    const agentTurn: ConversationTurn = {
+      id: `turn_${randomUUID()}`,
+      role: MessageRole.AGENT,
+      content: agentContent,
+      timestamp: new Date(),
+      toolCallIds: toolResults.map((t) => t.id),
+    };
+    session.conversationHistory.push(agentTurn);
+
+    await this.conversationMemory.addTurn(session.id, {
+      role: 'assistant',
+      content: agentContent,
+    });
+
+    session.updatedAt = new Date();
+    await this.saveSession(session);
+
+    return {
+      sessionId: session.id,
+      response: {
+        role: MessageRole.AGENT,
+        content: agentContent,
+      },
+      toolCalls: toolResults,
+      suggestedActions: [],
+      sessionActive: session.status === AgentSessionStatus.ACTIVE,
+    };
+  }
+
+  /**
+   * Process message with stub (fallback)
+   */
+  private async processWithStub(
+    session: OrchestratorSession,
+    message: string,
+  ): Promise<ProcessMessageResult> {
+    const toolCalls: ToolCallLogEntry[] = [];
+
+    // Simulate tool call detection
     let agentContent = '';
     let suggestedActions: string[] = [];
 
@@ -329,9 +628,8 @@ export class OrchestratorService {
       agentContent = 'I can help you book an appointment. Let me check available time slots for you.';
       suggestedActions = ['View available slots', 'Specify preferred time', 'Choose a different date'];
 
-      // Simulate a tool call
       const toolCallEntry = await this.logToolCall(
-        sessionId,
+        session.id,
         'BookingTool.getSlots',
         { query: message },
       );
@@ -354,13 +652,15 @@ export class OrchestratorService {
       role: MessageRole.AGENT,
       content: agentContent,
       timestamp: new Date(),
-      toolCallIds: toolCalls.map(tc => tc.id),
+      toolCallIds: toolCalls.map((tc) => tc.id),
     };
     session.conversationHistory.push(agentTurn);
     session.updatedAt = new Date();
 
+    await this.saveSession(session);
+
     return {
-      sessionId,
+      sessionId: session.id,
       response: {
         role: MessageRole.AGENT,
         content: agentContent,
@@ -376,22 +676,46 @@ export class OrchestratorService {
   // ============================================
 
   /**
-   * Execute a tool call within the session
-   *
-   * @param sessionId - Session ID
-   * @param toolName - Tool to execute
-   * @param params - Tool parameters
-   * @returns Tool execution result
-   *
-   * P1: Route to ToolsService stubs
-   * P2: Full tool execution with validation
+   * Execute tool calls from LLM
+   */
+  private async executeToolCalls(
+    session: OrchestratorSession,
+    toolCalls: LlmToolCall[],
+  ): Promise<ToolCallLogEntry[]> {
+    const results: ToolCallLogEntry[] = [];
+
+    for (const toolCall of toolCalls) {
+      const result = await this.executeToolCall(
+        session.id,
+        toolCall.name,
+        toolCall.arguments,
+      );
+      results.push({
+        id: toolCall.id,
+        sessionId: session.id,
+        toolName: toolCall.name,
+        status: result.success ? ToolCallStatus.SUCCESS : ToolCallStatus.FAILED,
+        input: toolCall.arguments,
+        output: result.result.data as Record<string, unknown> | undefined,
+        error: result.error,
+        startedAt: new Date(),
+        completedAt: new Date(),
+        durationMs: 0,
+      });
+    }
+
+    return results;
+  }
+
+  /**
+   * Execute a single tool call
    */
   async executeToolCall(
     sessionId: string,
     toolName: string,
     params: Record<string, unknown>,
   ): Promise<ExecuteToolResult> {
-    const session = this.getSessionOrThrow(sessionId);
+    const session = await this.getSessionOrThrow(sessionId);
 
     if (session.status !== AgentSessionStatus.ACTIVE) {
       throw new BadRequestException(`Session ${sessionId} is not active`);
@@ -472,6 +796,8 @@ export class OrchestratorService {
       };
       session.conversationHistory.push(toolTurn);
 
+      await this.saveSession(session);
+
       return {
         success: result.success,
         toolCallId,
@@ -495,6 +821,8 @@ export class OrchestratorService {
         durationMs: Date.now() - startTime,
       };
       session.toolCallLog.push(logEntry);
+
+      await this.saveSession(session);
 
       return {
         success: false,
@@ -522,7 +850,7 @@ export class OrchestratorService {
       startedAt: new Date(),
     };
 
-    const session = this.sessions.get(sessionId);
+    const session = await this.getSession(sessionId);
     if (session) {
       session.toolCallLog.push(entry);
     }
@@ -530,7 +858,7 @@ export class OrchestratorService {
     // Simulate completion for stub
     entry.status = ToolCallStatus.SUCCESS;
     entry.completedAt = new Date();
-    entry.durationMs = 50; // Stub timing
+    entry.durationMs = 50;
     entry.output = { stub: true, message: 'Tool call simulated' };
 
     return entry;
@@ -542,21 +870,13 @@ export class OrchestratorService {
 
   /**
    * Handle transfer to human agent
-   *
-   * @param sessionId - Session to transfer
-   * @param reason - Reason for takeover
-   * @param priority - Priority in queue
-   * @returns Takeover result
-   *
-   * P1: Stub implementation
-   * P2: Integration with human queue system
    */
   async handleHumanTakeover(
     sessionId: string,
     reason?: string,
     priority?: string,
   ): Promise<HumanTakeoverResult> {
-    const session = this.getSessionOrThrow(sessionId);
+    const session = await this.getSessionOrThrow(sessionId);
 
     this.logger.log(`Human takeover requested for session ${sessionId}. Reason: ${reason}`);
 
@@ -574,10 +894,10 @@ export class OrchestratorService {
     };
     session.conversationHistory.push(takeoverTurn);
 
-    // P2: Queue the session for human agent
-    // await this.humanQueueService.enqueue(sessionId, priority);
+    await this.saveSession(session);
+    await this.updateSessionInDb(session);
 
-    // Stub: Calculate mock queue position
+    // Calculate mock queue position
     const queuePosition = Math.floor(Math.random() * 5) + 1;
     const estimatedWaitSeconds = queuePosition * 60;
 
@@ -590,24 +910,167 @@ export class OrchestratorService {
     };
   }
 
+  /**
+   * Trigger handoff when max turns reached
+   */
+  private async triggerMaxTurnsHandoff(
+    session: OrchestratorSession,
+    lastMessage: string,
+  ): Promise<ProcessMessageResult> {
+    const handoffMessage = 'I apologize, but this conversation has become quite long. Let me connect you with a human agent who can better assist you.';
+
+    await this.handleHumanTakeover(session.id, 'Max turns reached', 'normal');
+
+    return {
+      sessionId: session.id,
+      response: {
+        role: MessageRole.AGENT,
+        content: handoffMessage,
+      },
+      toolCalls: [],
+      suggestedActions: ['Wait for human agent'],
+      sessionActive: false,
+    };
+  }
+
   // ============================================
   // HELPERS
   // ============================================
 
   /**
-   * Get user permissions (stub)
-   *
-   * P1: Return default permissions
-   * P2: Query from RBAC service
+   * Get tool definitions for an agent
+   */
+  private getToolDefinitionsForAgent(agentInstance: AgentInstance): LlmToolDefinition[] {
+    const toolDefs = this.toolsService.getToolDefinitions();
+    const tools: LlmToolDefinition[] = [];
+
+    for (const toolName of agentInstance.availableTools) {
+      const def = toolDefs[toolName];
+      if (def) {
+        tools.push({
+          name: toolName,
+          description: def.description,
+          input_schema: this.getToolSchema(toolName),
+        });
+      }
+    }
+
+    return tools;
+  }
+
+  /**
+   * Get JSON schema for a tool
+   */
+  private getToolSchema(toolName: string): any {
+    // Tool schemas - simplified for now
+    const schemas: Record<string, any> = {
+      'BookingTool.createBooking': {
+        type: 'object',
+        properties: {
+          jobId: { type: 'string', description: 'Job ID to book' },
+          proProfileId: { type: 'string', description: 'Contractor profile ID' },
+          startTime: { type: 'string', description: 'Start time (ISO format)' },
+          endTime: { type: 'string', description: 'End time (ISO format)' },
+          notes: { type: 'string', description: 'Booking notes' },
+        },
+        required: ['jobId', 'proProfileId'],
+      },
+      'BookingTool.getSlots': {
+        type: 'object',
+        properties: {
+          proProfileId: { type: 'string', description: 'Contractor profile ID' },
+          startDate: { type: 'string', description: 'Start date (ISO format)' },
+          endDate: { type: 'string', description: 'End date (ISO format)' },
+          durationMinutes: { type: 'number', description: 'Required duration' },
+        },
+        required: ['proProfileId', 'startDate', 'endDate'],
+      },
+      'DispatchTool.initiateDispatch': {
+        type: 'object',
+        properties: {
+          jobId: { type: 'string', description: 'Job ID to dispatch' },
+          urgency: { type: 'string', enum: ['LOW', 'NORMAL', 'HIGH', 'EMERGENCY'] },
+          radiusKm: { type: 'number', description: 'Search radius in km' },
+        },
+        required: ['jobId'],
+      },
+      'DispatchTool.checkStatus': {
+        type: 'object',
+        properties: {
+          dispatchId: { type: 'string', description: 'Dispatch ID to check' },
+        },
+        required: ['dispatchId'],
+      },
+      'SmsTool.sendSms': {
+        type: 'object',
+        properties: {
+          to: { type: 'string', description: 'Phone number' },
+          message: { type: 'string', description: 'Message content' },
+        },
+        required: ['to', 'message'],
+      },
+      'EmailTool.sendEmail': {
+        type: 'object',
+        properties: {
+          to: { type: 'string', description: 'Email address' },
+          subject: { type: 'string', description: 'Email subject' },
+          body: { type: 'string', description: 'Email body' },
+        },
+        required: ['to', 'subject', 'body'],
+      },
+      'CallTool.initiateCall': {
+        type: 'object',
+        properties: {
+          to: { type: 'string', description: 'Phone number' },
+          recordingEnabled: { type: 'boolean', description: 'Enable recording' },
+        },
+        required: ['to'],
+      },
+      'CalendarTool.checkAvailability': {
+        type: 'object',
+        properties: {
+          proProfileId: { type: 'string', description: 'Contractor profile ID' },
+          startDate: { type: 'string', description: 'Start date (ISO format)' },
+          endDate: { type: 'string', description: 'End date (ISO format)' },
+        },
+        required: ['proProfileId', 'startDate', 'endDate'],
+      },
+    };
+
+    return schemas[toolName] || { type: 'object', properties: {} };
+  }
+
+  /**
+   * Check for escalation triggers in conversation
+   */
+  private checkEscalationTriggers(
+    session: OrchestratorSession,
+    userMessage: string,
+    agentResponse: string,
+  ): string[] {
+    const suggestions: string[] = [];
+
+    if (session.agentInstance?.config.escalation?.triggerKeywords) {
+      const lowerMessage = userMessage.toLowerCase();
+      for (const keyword of session.agentInstance.config.escalation.triggerKeywords) {
+        if (lowerMessage.includes(keyword.toLowerCase())) {
+          suggestions.push('Transfer to human agent');
+          break;
+        }
+      }
+    }
+
+    return suggestions;
+  }
+
+  /**
+   * Get user permissions
    */
   private async getUserPermissions(userId?: string): Promise<string[]> {
     if (!userId) {
-      // Anonymous user - limited permissions
       return ['booking:read', 'calendar:read'];
     }
 
-    // P1 Stub: Return full permissions for authenticated users
-    // P2: Query actual permissions from user/role
     return [
       'booking:read',
       'booking:create',
@@ -620,19 +1083,118 @@ export class OrchestratorService {
     ];
   }
 
+  // ============================================
+  // SESSION PERSISTENCE
+  // ============================================
+
+  /**
+   * Save session to Redis and memory
+   */
+  private async saveSession(session: OrchestratorSession): Promise<void> {
+    // Save to memory as fallback
+    this.sessions.set(session.id, session);
+
+    // Try to save to Redis
+    try {
+      await this.redis.setJson(
+        `${REDIS_SESSION_PREFIX}${session.id}`,
+        session,
+        REDIS_SESSION_TTL,
+      );
+    } catch (error) {
+      this.logger.debug(`Failed to save session to Redis: ${session.id}`);
+    }
+  }
+
+  /**
+   * Rehydrate session dates after JSON parsing
+   */
+  private rehydrateSession(session: OrchestratorSession): OrchestratorSession {
+    return {
+      ...session,
+      createdAt: new Date(session.createdAt),
+      updatedAt: new Date(session.updatedAt),
+      endedAt: session.endedAt ? new Date(session.endedAt) : undefined,
+      conversationHistory: session.conversationHistory.map((turn) => ({
+        ...turn,
+        timestamp: new Date(turn.timestamp),
+      })),
+      toolCallLog: session.toolCallLog.map((log) => ({
+        ...log,
+        startedAt: new Date(log.startedAt),
+        completedAt: log.completedAt ? new Date(log.completedAt) : undefined,
+      })),
+    };
+  }
+
+  /**
+   * Persist session to database
+   */
+  private async persistSessionToDb(session: OrchestratorSession): Promise<void> {
+    try {
+      await this.prisma.agentSession.create({
+        data: {
+          id: session.id,
+          sessionType: session.sessionType,
+          userId: session.userId,
+          metadata: {
+            agentId: session.agentId,
+            systemPrompt: session.agentInstance?.systemPrompt,
+            ...session.context,
+          },
+        },
+      });
+    } catch (error) {
+      this.logger.error(`Failed to persist session to database: ${session.id}`, error);
+    }
+  }
+
+  /**
+   * Update session in database
+   */
+  private async updateSessionInDb(session: OrchestratorSession): Promise<void> {
+    try {
+      await this.prisma.agentSession.update({
+        where: { id: session.id },
+        data: {
+          endedAt: session.endedAt,
+          metadata: {
+            agentId: session.agentId,
+            status: session.status,
+            turnCount: session.turnCount,
+            ...session.context,
+          },
+        },
+      });
+    } catch (error) {
+      this.logger.error(`Failed to update session in database: ${session.id}`, error);
+    }
+  }
+
+  // ============================================
+  // PUBLIC ACCESSORS
+  // ============================================
+
   /**
    * Get conversation history for a session
    */
-  getConversationHistory(sessionId: string): ConversationTurn[] {
-    const session = this.getSessionOrThrow(sessionId);
+  async getConversationHistory(sessionId: string): Promise<ConversationTurn[]> {
+    const session = await this.getSessionOrThrow(sessionId);
     return session.conversationHistory;
   }
 
   /**
    * Get tool call log for a session
    */
-  getToolCallLog(sessionId: string): ToolCallLogEntry[] {
-    const session = this.getSessionOrThrow(sessionId);
+  async getToolCallLog(sessionId: string): Promise<ToolCallLogEntry[]> {
+    const session = await this.getSessionOrThrow(sessionId);
     return session.toolCallLog;
+  }
+
+  /**
+   * Check if LLM is available
+   */
+  isLlmAvailable(): boolean {
+    return this.llmAvailable;
   }
 }

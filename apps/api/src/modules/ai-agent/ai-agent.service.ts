@@ -122,14 +122,14 @@ export class AiAgentService {
   ): Promise<SessionHistoryResponseDto> {
     this.logger.debug(`Getting history for session ${sessionId}`);
 
-    const session = this.orchestrator.getSession(sessionId);
+    const session = await this.orchestrator.getSession(sessionId);
     if (!session) {
       throw new NotFoundException(`Session ${sessionId} not found`);
     }
 
-    const conversationHistory = this.orchestrator.getConversationHistory(sessionId);
+    const conversationHistory = await this.orchestrator.getConversationHistory(sessionId);
     const toolCallLog = query.includeToolCalls
-      ? this.orchestrator.getToolCallLog(sessionId)
+      ? await this.orchestrator.getToolCallLog(sessionId)
       : [];
 
     // Pagination
@@ -225,7 +225,7 @@ export class AiAgentService {
    * @returns Session response or throws NotFoundException
    */
   async getSession(sessionId: string): Promise<AgentSessionResponseDto> {
-    const session = this.orchestrator.getSession(sessionId);
+    const session = await this.orchestrator.getSession(sessionId);
     if (!session) {
       throw new NotFoundException(`Session ${sessionId} not found`);
     }
@@ -235,8 +235,8 @@ export class AiAgentService {
   /**
    * Check if session exists and is active
    */
-  isSessionActive(sessionId: string): boolean {
-    const session = this.orchestrator.getSession(sessionId);
+  async isSessionActive(sessionId: string): Promise<boolean> {
+    const session = await this.orchestrator.getSession(sessionId);
     return session?.status === AgentSessionStatus.ACTIVE;
   }
 

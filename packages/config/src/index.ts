@@ -40,6 +40,16 @@ const envSchema = z.object({
   // Feature Flags (defaults)
   DEFAULT_SLA_ACCEPT_MINUTES: z.string().default('5').transform(Number),
   DEFAULT_SLA_SCHEDULE_HOURS: z.string().default('24').transform(Number),
+
+  // LLM Configuration (AI Agents)
+  ANTHROPIC_API_KEY: z.string().optional(),
+  CLAUDE_MODEL_ID: z.string().default('claude-sonnet-4-20250514'),
+  OPENAI_API_KEY: z.string().optional(),
+  OPENAI_MODEL_ID: z.string().default('gpt-4-turbo'),
+  LLM_MAX_TOKENS: z.string().default('4096').transform(Number),
+  LLM_TEMPERATURE: z.string().default('0.7').transform(Number),
+  LLM_STREAMING_ENABLED: z.string().default('true').transform((v) => v === 'true'),
+  LLM_FALLBACK_ENABLED: z.string().default('true').transform((v) => v === 'true'),
 });
 
 // Parse and validate environment
@@ -98,6 +108,21 @@ export const frontendUrls = {
 export const defaultSla = {
   acceptMinutes: config.DEFAULT_SLA_ACCEPT_MINUTES,
   scheduleHours: config.DEFAULT_SLA_SCHEDULE_HOURS,
+};
+
+export const llmConfig = {
+  anthropic: {
+    apiKey: config.ANTHROPIC_API_KEY,
+    modelId: config.CLAUDE_MODEL_ID,
+  },
+  openai: {
+    apiKey: config.OPENAI_API_KEY,
+    modelId: config.OPENAI_MODEL_ID,
+  },
+  maxTokens: config.LLM_MAX_TOKENS,
+  temperature: config.LLM_TEMPERATURE,
+  streamingEnabled: config.LLM_STREAMING_ENABLED,
+  fallbackEnabled: config.LLM_FALLBACK_ENABLED,
 };
 
 // CORS origins

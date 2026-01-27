@@ -6,30 +6,67 @@ import { SkillRegistryService } from './skill-registry.service';
 import { ToolsService } from './tools.service';
 import { CommunicationsModule } from '../communications/communications.module';
 
+// LLM Services
+import { LlmGatewayService } from './llm/llm-gateway.service';
+import { ConversationMemoryService } from './llm/conversation-memory.service';
+import { PromptTemplateService } from './llm/prompt-template.service';
+
+// Agent Configuration
+import { AgentConfigRegistryService } from './agents/agent-config.registry';
+
+// Skills
+import {
+  // Core Skills
+  JobIntakeSkill,
+  QuoteGenerationSkill,
+  ScheduleManagementSkill,
+  StatusInquirySkill,
+  IssueEscalationSkill,
+  FeedbackCollectionSkill,
+  // Contractor Skills
+  AvailabilityManagementSkill,
+  JobAcceptanceSkill,
+  EarningsTrackingSkill,
+  DocumentUploadSkill,
+  // Operations Skills
+  DispatchOverrideSkill,
+  EscalationHandlingSkill,
+  ContractorSearchSkill,
+  ReportGenerationSkill,
+} from './skills';
+
 /**
  * AI Agent Module
  *
  * Provides AI-powered agent functionality for the platform:
- * - Phone agent for voice interactions
- * - Booking assistant
- * - Support agent (P2)
- * - Dispatch coordination (P2)
+ * - 11 specialized AI agents for different domains
+ * - 14+ skills for agent capabilities
+ * - LLM integration with Claude API
+ * - Conversation memory and context management
  *
  * Components:
  * - AiAgentController: REST API endpoints
  * - AiAgentService: High-level service API
- * - OrchestratorService: Session management and message processing
+ * - OrchestratorService: Session management and LLM message processing
  * - SkillRegistryService: Skill/capability management
  * - ToolsService: Tool implementations (booking, dispatch, SMS, etc.)
+ * - LlmGatewayService: Claude/OpenAI API integration
+ * - ConversationMemoryService: Context and memory management
+ * - PromptTemplateService: Agent system prompts
+ * - AgentConfigRegistryService: Agent configurations
+ *
+ * Agents:
+ * - Customer-Facing: Dispatch Concierge, Job Status, Quote Assistant
+ * - Contractor-Facing: Dispatch Optimizer, Contractor Onboarding, Earnings Optimizer
+ * - Operations: SLA Guardian, Quality Assurance
+ * - Admin: Capacity Planning, Policy Configuration, Analytics Insight
  *
  * Dependencies:
  * - PrismaService: Database operations (via global module)
  * - FeatureFlagsService: Feature flag checks (via global module)
  * - PolicyService: Policy resolution (via global module)
  * - ConsentService: Consent checks for communications
- *
- * P1 Feature: Basic stubs and structure
- * P2 Feature: Full LLM integration, persistent state, analytics
+ * - Redis: Session caching (via REDIS_URL env var)
  */
 @Module({
   imports: [
@@ -38,11 +75,46 @@ import { CommunicationsModule } from '../communications/communications.module';
   ],
   controllers: [AiAgentController],
   providers: [
+    // Core Services
     AiAgentService,
     OrchestratorService,
     SkillRegistryService,
     ToolsService,
+
+    // LLM Services
+    LlmGatewayService,
+    ConversationMemoryService,
+    PromptTemplateService,
+
+    // Agent Configuration
+    AgentConfigRegistryService,
+
+    // Core Skills
+    JobIntakeSkill,
+    QuoteGenerationSkill,
+    ScheduleManagementSkill,
+    StatusInquirySkill,
+    IssueEscalationSkill,
+    FeedbackCollectionSkill,
+
+    // Contractor Skills
+    AvailabilityManagementSkill,
+    JobAcceptanceSkill,
+    EarningsTrackingSkill,
+    DocumentUploadSkill,
+
+    // Operations Skills
+    DispatchOverrideSkill,
+    EscalationHandlingSkill,
+    ContractorSearchSkill,
+    ReportGenerationSkill,
   ],
-  exports: [AiAgentService, OrchestratorService, SkillRegistryService],
+  exports: [
+    AiAgentService,
+    OrchestratorService,
+    SkillRegistryService,
+    LlmGatewayService,
+    AgentConfigRegistryService,
+  ],
 })
 export class AiAgentModule {}

@@ -5,7 +5,7 @@ import type { JobStatus } from '@trades/shared/types';
 
 interface JobStatusBadgeProps {
   status: JobStatus;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'large';
 }
 
 const statusConfig: Record<
@@ -60,6 +60,7 @@ const sizeClasses = {
   sm: 'px-2 py-0.5 text-xs',
   md: 'px-2.5 py-1 text-sm',
   lg: 'px-3 py-1.5 text-sm',
+  large: 'px-4 py-2 text-base',
 };
 
 export function JobStatusBadge({ status, size = 'md' }: JobStatusBadgeProps) {
@@ -102,6 +103,9 @@ const statusOrder: Record<JobStatus, number> = {
   COMPLETED: 5,
   CANCELLED: -1,
 };
+
+// Alias for simpler imports
+export { JobStatusBadge as JobStatus };
 
 export function JobStatusTimeline({ currentStatus }: JobStatusTimelineProps) {
   const currentIndex = statusOrder[currentStatus];

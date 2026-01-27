@@ -1,11 +1,13 @@
 import { Module } from '@nestjs/common';
 import { DocumentsService } from './documents.service';
 import { DocumentsController } from './documents.controller';
-import { PortfolioService } from './portfolio.service';
+import { AuditModule } from '../audit/audit.module';
+import { StorageModule } from '../../common/storage/storage.module';
 
 @Module({
+  imports: [AuditModule, StorageModule],
   controllers: [DocumentsController],
-  providers: [DocumentsService, PortfolioService],
-  exports: [DocumentsService, PortfolioService],
+  providers: [DocumentsService],
+  exports: [DocumentsService],
 })
 export class DocumentsModule {}

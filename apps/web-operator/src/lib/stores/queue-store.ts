@@ -15,6 +15,8 @@ interface QueueState {
   // Job queue
   jobs: Job[];
   totalJobs: number;
+  pendingJobs: number;
+  escalatedJobs: number;
   currentPage: number;
   totalPages: number;
   isLoading: boolean;
@@ -37,6 +39,7 @@ interface QueueState {
 
   // Actions
   fetchJobs: (page?: number) => Promise<void>;
+  fetchQueue: () => Promise<void>; // Alias for layout polling
   setFilters: (filters: Partial<QueueFilters>) => void;
   resetFilters: () => void;
 
@@ -64,6 +67,8 @@ export const useQueueStore = create<QueueState>((set, get) => ({
   // Initial state
   jobs: [],
   totalJobs: 0,
+  pendingJobs: 0,
+  escalatedJobs: 0,
   currentPage: 1,
   totalPages: 1,
   isLoading: false,
@@ -111,9 +116,15 @@ export const useQueueStore = create<QueueState>((set, get) => ({
 
       const response = await operatorApi.getJobQueue(params);
 
+      // Calculate pending and escalated counts from jobs
+      const pendingCount = response.data.filter((job: Job) => job.status === 'PENDING' || job.status === 'DISPATCHING').length;
+      const escalatedCount = response.data.filter((job: Job) => job.escalated).length;
+
       set({
         jobs: response.data,
         totalJobs: response.total,
+        pendingJobs: pendingCount,
+        escalatedJobs: escalatedCount,
         currentPage: response.page,
         totalPages: response.totalPages,
         isLoading: false,
@@ -124,6 +135,11 @@ export const useQueueStore = create<QueueState>((set, get) => ({
         isLoading: false,
       });
     }
+  },
+
+  // Alias for layout polling - fetches current page
+  fetchQueue: async () => {
+    await get().fetchJobs(get().currentPage);
   },
 
   setFilters: (newFilters: Partial<QueueFilters>) => {

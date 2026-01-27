@@ -183,6 +183,63 @@ pnpm docker:down   # Stop Docker services
 pnpm clean         # Clean build artifacts
 ```
 
+## Testing
+
+### Running Tests
+
+```bash
+# Run all tests
+pnpm test
+
+# Run unit tests only
+pnpm test:unit
+
+# Run integration tests
+pnpm test:integration
+
+# Run E2E tests (Playwright)
+pnpm test:e2e
+
+# Run tests with coverage
+pnpm test:coverage
+```
+
+### Test Structure
+
+```
+apps/api/src/
+├── modules/
+│   ├── auth/
+│   │   └── auth.service.spec.ts      # 18 unit tests
+│   ├── booking/
+│   │   └── booking.service.spec.ts   # 37 unit tests
+│   ├── dispatch/
+│   │   └── dispatch.service.spec.ts  # 24 unit tests
+│   └── feature-flags/
+│       └── feature-flags.service.spec.ts  # 24 unit tests
+└── test/
+    ├── setup.ts                 # Unit test setup
+    ├── integration-setup.ts     # Integration test setup
+    └── test-utils.ts           # Test utilities
+```
+
+### Test Coverage
+
+Current test coverage includes:
+- **Auth Service**: Registration, login, logout, token refresh, password reset
+- **Feature Flags**: Scope resolution, caching, CRUD operations
+- **Dispatch Service**: Pro matching, accept/decline, SLA timeouts, escalation
+- **Booking Service**: Exact/window modes, confirmation, cancellation, policies
+
+### Test Utilities
+
+The `test-utils.ts` provides helpers for integration tests:
+- `createTestApp()` - Create NestJS test application
+- `cleanupTestApp()` - Cleanup after tests
+- `createTestUser()` - Create test users with hashed passwords
+- `getAuthTokens()` - Get JWT tokens for authenticated requests
+- `authHeader()` - Generate Authorization header
+
 ## Tech Stack
 
 - **Backend**: NestJS, Prisma, PostgreSQL, Redis, BullMQ

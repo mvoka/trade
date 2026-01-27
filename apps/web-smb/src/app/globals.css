@@ -1,4 +1,8 @@
-@import '@trades-dispatch/ui/globals.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import '@trades/ui/globals.css';
 
 /*
  * Web SMB Portal - Customer/Business Portal Styles

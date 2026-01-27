@@ -1,4 +1,4 @@
-const baseConfig = require('@trades-dispatch/ui/tailwind.config');
+const baseConfig = require('@trades/ui/tailwind.config');
 
 /** @type {import('tailwindcss').Config} */
 module.exports = {

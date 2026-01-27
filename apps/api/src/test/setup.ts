@@ -14,9 +14,19 @@ process.env.STORAGE_BUCKET = 'test-bucket';
 process.env.API_PORT = '3000';
 process.env.API_PREFIX = '/api/v1';
 
+// LLM Configuration (AI Agents)
+process.env.ANTHROPIC_API_KEY = 'test-anthropic-key';
+process.env.CLAUDE_MODEL_ID = 'claude-sonnet-4-20250514';
+process.env.OPENAI_API_KEY = 'test-openai-key';
+process.env.OPENAI_MODEL_ID = 'gpt-4-turbo';
+process.env.LLM_MAX_TOKENS = '4096';
+process.env.LLM_TEMPERATURE = '0.7';
+process.env.LLM_STREAMING_ENABLED = 'false';
+process.env.LLM_FALLBACK_ENABLED = 'true';
+
 // Mock Redis
 vi.mock('ioredis', () => {
-  const Redis = vi.fn(() => ({
+  const mockRedisInstance = {
     get: vi.fn(),
     set: vi.fn(),
     setex: vi.fn(),
@@ -27,8 +37,37 @@ vi.mock('ioredis', () => {
     expire: vi.fn(),
     quit: vi.fn(),
     on: vi.fn(),
-  }));
-  return { default: Redis };
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+  };
+  const Redis = vi.fn(() => mockRedisInstance);
+  return { default: Redis, Redis };
+});
+
+// Mock Anthropic SDK
+vi.mock('@anthropic-ai/sdk', () => {
+  const mockCreate = vi.fn().mockResolvedValue({
+    id: 'msg_test123',
+    type: 'message',
+    role: 'assistant',
+    content: [{ type: 'text', text: 'Mock LLM response' }],
+    model: 'claude-sonnet-4-20250514',
+    stop_reason: 'end_turn',
+    usage: { input_tokens: 100, output_tokens: 50 },
+  });
+
+  return {
+    default: vi.fn().mockImplementation(() => ({
+      messages: {
+        create: mockCreate,
+      },
+    })),
+    Anthropic: vi.fn().mockImplementation(() => ({
+      messages: {
+        create: mockCreate,
+      },
+    })),
+  };
 });
 
 // Global test utilities
@@ -39,3 +78,70 @@ global.console = {
   error: console.error,
   warn: console.warn,
 };
+
+// Test helper factories
+export const createMockPrisma = () => ({
+  user: {
+    findUnique: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+  },
+  agentSession: {
+    findUnique: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+  },
+  conversationTurn: {
+    findMany: vi.fn(),
+    create: vi.fn(),
+    createMany: vi.fn(),
+  },
+  job: {
+    findUnique: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+  },
+  proProfile: {
+    findUnique: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+  },
+  organization: {
+    findUnique: vi.fn(),
+    findMany: vi.fn(),
+  },
+  featureFlag: {
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
+  },
+  $transaction: vi.fn((fn) => fn({
+    user: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
+    agentSession: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
+  })),
+});
+
+export const createMockFeatureFlags = () => ({
+  isEnabled: vi.fn().mockResolvedValue(true),
+  getValue: vi.fn().mockResolvedValue(null),
+  getAllFlags: vi.fn().mockResolvedValue({}),
+});
+
+export const createMockRedis = () => ({
+  get: vi.fn(),
+  set: vi.fn(),
+  setex: vi.fn(),
+  del: vi.fn(),
+  keys: vi.fn(() => []),
+  exists: vi.fn(() => 0),
+  incr: vi.fn(() => 1),
+  expire: vi.fn(),
+  quit: vi.fn(),
+  on: vi.fn(),
+  connect: vi.fn(),
+  disconnect: vi.fn(),
+});

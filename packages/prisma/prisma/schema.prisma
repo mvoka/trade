@@ -140,6 +140,60 @@ enum BoostStatus {
 }
 
 // ============================================
+// PHASE 3 ENUMS
+// ============================================
+
+enum UserType {
+  CONSUMER
+  BUSINESS
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAUSED
+  CANCELLED
+  PAST_DUE
+  TRIAL
+}
+
+enum BillingInterval {
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  QUARTERLY
+  ANNUALLY
+  ONE_TIME
+}
+
+enum ServiceOccurrenceStatus {
+  SCHEDULED
+  JOB_CREATED
+  COMPLETED
+  SKIPPED
+  CANCELLED
+}
+
+enum OfferStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  EXPIRED
+  ARCHIVED
+}
+
+enum AgentAutomationMode {
+  MANUAL
+  ASSIST
+  AUTO
+}
+
+enum BranchType {
+  HEADQUARTERS
+  BRANCH
+  FRANCHISE
+}
+
+// ============================================
 // IDENTITY & RBAC
 // ============================================
 
@@ -151,6 +205,7 @@ model User {
   lastName          String?
   phone             String?
   role              UserRole  @default(SMB_USER)
+  userType          UserType  @default(BUSINESS)
   emailVerified     Boolean   @default(false)
   emailVerifiedAt   DateTime?
   passwordResetToken String?
@@ -162,6 +217,7 @@ model User {
 
   // Relations
   proProfile        ProProfile?
+  consumerProfile   ConsumerProfile?
   orgMemberships    OrgMember[]
   jobs              Job[]           @relation("JobCreator")
   consents          Consent[]
@@ -174,6 +230,7 @@ model User {
 
   @@index([email])
   @@index([role])
+  @@index([userType])
 }
 
 model RefreshToken {
@@ -225,6 +282,7 @@ model ServiceCategory {
   proProfiles       ProProfile[]  @relation("ProServiceCategories")
   jobs              Job[]
   verificationChecklists VerificationChecklist[]
+  offerCampaigns    OfferCampaign[]
 
   @@index([code])
 }
@@ -248,10 +306,12 @@ model Org {
   updatedAt     DateTime @updatedAt
 
   // Relations
-  members       OrgMember[]
-  featureFlags  FeatureFlag[]
-  policies      Policy[]
-  proProfiles   ProProfile[]
+  members          OrgMember[]
+  featureFlags     FeatureFlag[]
+  policies         Policy[]
+  proProfiles      ProProfile[]
+  branches         OrgBranch[]
+  automationConfig AgentAutomationConfig?
 
   @@index([name])
 }
@@ -288,6 +348,8 @@ model ProProfile {
   businessEmail       String?
   bio                 String?
   yearsExperience     Int?
+  avatarUrl           String?
+  verificationBadge   String?  // Badge type earned (e.g., "VERIFIED", "TOP_PRO", "ELITE")
 
   // Verification
   verificationStatus  VerificationStatus @default(PENDING)
@@ -313,6 +375,9 @@ model ProProfile {
   bookings            Booking[]
   preferredByContractors PreferredContractor[] @relation("ProPreferred")
   portfolioItems      PortfolioItem[]
+  portfolio           ProPortfolio?
+  servicePlans        ServicePlan[]
+  reviews             Review[]
 
   @@index([userId])
   @@index([orgId])
@@ -587,17 +652,19 @@ model Job {
   updatedAt           DateTime  @updatedAt
 
   // Relations
-  fromLead            LeadNormalized?
-  attachments         JobAttachment[]
-  dispatchAttempts    DispatchAttempt[]
-  dispatchAssignment  DispatchAssignment?
-  bookings            Booking[]
-  messageThread       MessageThread?
-  pipelineStage       PipelineStage?  @relation(fields: [pipelineStageId], references: [id])
-  pipelineStageId     String?
-  tasks               Task[]
-  reminders           Reminder[]
-  portfolioItems      PortfolioItem[]
+  fromLead              LeadNormalized?
+  attachments           JobAttachment[]
+  dispatchAttempts      DispatchAttempt[]
+  dispatchAssignment    DispatchAssignment?
+  bookings              Booking[]
+  messageThread         MessageThread?
+  pipelineStage         PipelineStage?  @relation(fields: [pipelineStageId], references: [id])
+  pipelineStageId       String?
+  tasks                 Task[]
+  reminders             Reminder[]
+  portfolioItems        PortfolioItem[]
+  reviews               Review[]
+  subscriptionOccurrence ServiceOccurrence? @relation("OccurrenceJob")
 
   @@index([createdById])
   @@index([serviceCategoryId])
@@ -1102,4 +1169,424 @@ model PaymentTransaction {
 
   @@index([jobId])
   @@index([externalId])
+}
+
+// ============================================
+// PHASE 3: CONSUMER / HOMEOWNER PROFILES
+// ============================================
+
+model ConsumerProfile {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Property Info
+  propertyType        String?  // HOUSE, CONDO, TOWNHOUSE, etc.
+  propertyAddressLine1 String?
+  propertyAddressLine2 String?
+  propertyCity        String?
+  propertyProvince    String?
+  propertyPostalCode  String?
+  propertyCountry     String   @default("CA")
+  propertyLat         Float?
+  propertyLng         Float?
+
+  // Marketing
+  marketingOptIn      Boolean  @default(false)
+  marketingOptInAt    DateTime?
+
+  // Metadata
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // Relations
+  subscriptions       Subscription[]
+  offerLeads          OfferLead[]
+
+  @@index([userId])
+}
+
+// ============================================
+// PHASE 3: SUBSCRIPTION SERVICE PLANS
+// ============================================
+
+model ServicePlan {
+  id                    String          @id @default(cuid())
+  proProfileId          String?
+  proProfile            ProProfile?     @relation(fields: [proProfileId], references: [id])
+  serviceCategoryId     String?
+
+  // Plan Details
+  name                  String
+  description           String?
+  billingInterval       BillingInterval
+  pricePerIntervalCents Int
+  currency              String          @default("CAD")
+
+  // Service Template
+  serviceTemplate       Json            // Template for job creation
+  visitsPerInterval     Int             @default(1)
+  estimatedDurationMins Int?
+
+  // Status
+  isActive              Boolean         @default(true)
+  isPublic              Boolean         @default(true)  // Visible to consumers
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  // Relations
+  subscriptions         Subscription[]
+
+  @@index([proProfileId])
+  @@index([serviceCategoryId])
+  @@index([billingInterval])
+}
+
+model Subscription {
+  id                    String             @id @default(cuid())
+  consumerProfileId     String
+  consumerProfile       ConsumerProfile    @relation(fields: [consumerProfileId], references: [id], onDelete: Cascade)
+  servicePlanId         String
+  servicePlan           ServicePlan        @relation(fields: [servicePlanId], references: [id])
+
+  // Status
+  status                SubscriptionStatus @default(TRIAL)
+  startDate             DateTime           @default(now())
+  endDate               DateTime?
+  pausedAt              DateTime?
+  cancelledAt           DateTime?
+  cancelReason          String?
+
+  // Billing
+  stripeSubscriptionId  String?            @unique
+  stripeCustomerId      String?
+  nextBillingDate       DateTime?
+  lastBillingDate       DateTime?
+
+  // Schedule
+  preferredDayOfWeek    DayOfWeek?
+  preferredTimeSlot     String?            // HH:mm format
+
+  // Metadata
+  metadata              Json?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  // Relations
+  occurrences           ServiceOccurrence[]
+
+  @@index([consumerProfileId])
+  @@index([servicePlanId])
+  @@index([status])
+  @@index([stripeSubscriptionId])
+}
+
+model ServiceOccurrence {
+  id                String                  @id @default(cuid())
+  subscriptionId    String
+  subscription      Subscription            @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  // Schedule
+  scheduledDate     DateTime
+  scheduledTimeSlot String?                 // HH:mm format
+  occurrenceNumber  Int                     // 1, 2, 3, etc. in sequence
+
+  // Status
+  status            ServiceOccurrenceStatus @default(SCHEDULED)
+
+  // Job Link (when created)
+  jobId             String?                 @unique
+  job               Job?                    @relation("OccurrenceJob", fields: [jobId], references: [id])
+  jobCreatedAt      DateTime?
+
+  // Completion
+  completedAt       DateTime?
+  skipReason        String?
+
+  // Metadata
+  notes             String?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  @@index([subscriptionId])
+  @@index([scheduledDate])
+  @@index([status])
+}
+
+// ============================================
+// PHASE 3: PRO PORTFOLIO
+// ============================================
+
+model ProPortfolio {
+  id            String     @id @default(cuid())
+  proProfileId  String     @unique
+  proProfile    ProProfile @relation(fields: [proProfileId], references: [id], onDelete: Cascade)
+
+  // Public Page
+  slug          String     @unique
+  headline      String?
+  bio           String?
+  description   String?
+  theme         String     @default("default")  // Portfolio theme
+  coverImageUrl String?
+  logoUrl       String?
+
+  // SEO
+  metaTitle     String?
+  metaDescription String?
+
+  // Contact Settings
+  showPhone     Boolean    @default(false)
+  showEmail     Boolean    @default(false)
+  displayEmail  String?    // Actual email to show publicly
+  displayPhone  String?    // Actual phone to show publicly
+  contactFormEnabled Boolean @default(true)
+
+  // Display Options
+  showReviews   Boolean    @default(true)
+  socialLinks   Json?      // { twitter: "...", linkedin: "..." }
+
+  // Status
+  isPublished   Boolean    @default(false)
+  publishedAt   DateTime?
+
+  // Stats
+  viewCount     Int        @default(0)
+  inquiryCount  Int        @default(0)
+
+  // Relations
+  reviews       Review[]
+
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([slug])
+  @@index([isPublished])
+}
+
+model Review {
+  id            String       @id @default(cuid())
+  proProfileId  String
+  proProfile    ProProfile   @relation(fields: [proProfileId], references: [id], onDelete: Cascade)
+  portfolioId   String?
+  portfolio     ProPortfolio? @relation(fields: [portfolioId], references: [id])
+  jobId         String?
+  job           Job?         @relation(fields: [jobId], references: [id])
+
+  // Review Content
+  rating        Int          // 1-5
+  comment       String?
+  reviewerName  String?
+
+  // Visibility
+  isPublic      Boolean      @default(true)
+  isVerified    Boolean      @default(false)
+
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([proProfileId])
+  @@index([portfolioId])
+  @@index([isPublic])
+}
+
+// ============================================
+// PHASE 3: OFFER CAMPAIGNS & LEAD GEN
+// ============================================
+
+model OfferCampaign {
+  id                      String           @id @default(cuid())
+  proProfileId            String?          // Optional: can be platform-wide
+  regionId                String?
+  serviceCategoryId       String?
+  serviceCategory         ServiceCategory? @relation(fields: [serviceCategoryId], references: [id])
+
+  // Campaign Details
+  slug                    String      @unique
+  headline                String
+  subheadline             String?
+  description             String?
+  offerType               String      // DISCOUNT, FREE_ESTIMATE, FIRST_TIME, SEASONAL
+  offerValue              String?     // e.g., "15% OFF", "$50 credit"
+  discountValue           Float?      // Numeric discount value
+
+  // Landing Page
+  heroImageUrl            String?
+  ctaText                 String      @default("Get Started")
+  thankYouMessage         String?
+
+  // Compliance
+  requiresMarketingConsent Boolean    @default(true)
+  termsText               String?
+  privacyPolicyUrl        String?
+
+  // Status & Scheduling
+  status                  OfferStatus @default(DRAFT)
+  startDate               DateTime?
+  endDate                 DateTime?
+  expiresAt               DateTime?   // Explicit expiration
+  maxLeads                Int?        // Optional cap
+
+  // Custom Fields
+  customFields            Json?       // Custom form field definitions
+
+  // Tracking
+  viewCount               Int         @default(0)
+  leadCount               Int         @default(0)
+  conversionRate          Float?
+
+  createdAt               DateTime    @default(now())
+  updatedAt               DateTime    @updatedAt
+
+  // Relations
+  leads                   OfferLead[]
+
+  @@index([slug])
+  @@index([status])
+  @@index([proProfileId])
+  @@index([serviceCategoryId])
+}
+
+model OfferLead {
+  id                      String          @id @default(cuid())
+  campaignId              String
+  campaign                OfferCampaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  consumerProfileId       String?
+  consumerProfile         ConsumerProfile? @relation(fields: [consumerProfileId], references: [id])
+
+  // Contact Info
+  name                    String?         // Display name (alternative to firstName/lastName)
+  firstName               String?
+  lastName                String?
+  email                   String
+  phone                   String?
+  address                 String?         // Short address for display
+
+  // Property (if provided)
+  propertyAddress         String?
+  propertyType            String?
+
+  // Request Details
+  serviceInterest         String?
+  message                 String?
+  notes                   String?         // Internal notes from agents/admins
+  preferredContactMethod  String?         // EMAIL, PHONE, SMS
+
+  // Custom Fields
+  customFieldValues       Json?           // Responses to campaign custom fields
+
+  // Consent & Compliance
+  marketingConsentGranted Boolean         @default(false)
+  marketingConsentAt      DateTime?
+  ipAddress               String?
+  userAgent               String?
+
+  // Follow-up
+  followUpCount           Int             @default(0)
+  lastFollowUpAt          DateTime?
+  lastContactedAt         DateTime?       // Last outreach attempt
+  nextFollowUpAt          DateTime?
+  status                  String          @default("NEW")  // NEW, CONTACTED, QUALIFIED, CONVERTED, CLOSED
+
+  // Conversion
+  convertedToJobId        String?
+  convertedAt             DateTime?
+
+  createdAt               DateTime        @default(now())
+  updatedAt               DateTime        @updatedAt
+
+  @@index([campaignId])
+  @@index([email])
+  @@index([status])
+  @@index([consumerProfileId])
+}
+
+// ============================================
+// PHASE 3: MULTI-BRANCH SUPPORT
+// ============================================
+
+model OrgBranch {
+  id            String     @id @default(cuid())
+  orgId         String
+  org           Org        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  parentBranchId String?
+  parentBranch  OrgBranch? @relation("BranchHierarchy", fields: [parentBranchId], references: [id])
+
+  // Branch Details
+  name          String
+  code          String?    // Internal branch code
+  branchType    BranchType @default(BRANCH)
+
+  // Location
+  addressLine1  String?
+  addressLine2  String?
+  city          String?
+  province      String?
+  postalCode    String?
+  country       String     @default("CA")
+  lat           Float?
+  lng           Float?
+
+  // Region Assignment
+  regionId      String?
+
+  // Contact
+  phone         String?
+  email         String?
+  managerName   String?
+
+  // Service Area
+  serviceRadiusKm Float?
+
+  // Status
+  isActive      Boolean    @default(true)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  // Relations
+  childBranches OrgBranch[] @relation("BranchHierarchy")
+
+  @@unique([orgId, code])
+  @@index([orgId])
+  @@index([branchType])
+  @@index([regionId])
+}
+
+// ============================================
+// PHASE 3: AGENT AUTOMATION CONFIG
+// ============================================
+
+model AgentAutomationConfig {
+  id                    String              @id @default(cuid())
+  orgId                 String              @unique
+  org                   Org                 @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  // Automation Modes
+  schedulingMode        AgentAutomationMode @default(MANUAL)
+  intakeMode            AgentAutomationMode @default(MANUAL)
+  dispatchMode          AgentAutomationMode @default(MANUAL)
+  communicationMode     AgentAutomationMode @default(MANUAL)
+  portfolioMode         AgentAutomationMode @default(MANUAL)
+  outreachMode          AgentAutomationMode @default(MANUAL)
+
+  // Guardrails
+  maxActionsPerHour     Int                 @default(10)
+  approvalThresholdCents Int                @default(10000)  // $100 default
+  requireApprovalForPayments Boolean        @default(true)
+  requireApprovalForOutbound Boolean        @default(true)
+
+  // Notification Settings
+  notifyOnAutoAction    Boolean             @default(true)
+  notifyEmail           String?
+  notifyPhone           String?
+
+  // Audit
+  lastAutoActionAt      DateTime?
+  totalAutoActions      Int                 @default(0)
+
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  @@index([orgId])
 }

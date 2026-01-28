@@ -8,3 +8,4 @@ export * from './base.skill';
 export * from './core';
 export * from './contractor';
 export * from './operations';
+export * from './phase3';

@@ -2,7 +2,7 @@ import { Injectable, Logger, ForbiddenException } from '@nestjs/common';
 import { ConsentService } from '../communications/consent.service';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import { PolicyService } from '../feature-flags/policy.service';
-import { ConsentType } from '@trades/shared';
+import { ConsentType, FEATURE_FLAGS } from '@trades/shared';
 
 // ============================================
 // TOOL INTERFACES
@@ -115,6 +115,102 @@ export interface InitiateCallParams {
   callbackUrl?: string;
   recordingEnabled?: boolean;
   agentPrompt?: string;
+}
+
+// ============================================
+// SUBSCRIPTION TOOL INTERFACES
+// ============================================
+
+export interface CreateOccurrenceJobParams {
+  subscriptionId: string;
+  occurrenceId: string;
+  scheduledDate: Date;
+  notes?: string;
+}
+
+export interface PauseSubscriptionParams {
+  subscriptionId: string;
+  reason?: string;
+  resumeDate?: Date;
+}
+
+export interface ResumeSubscriptionParams {
+  subscriptionId: string;
+}
+
+export interface SubscriptionJobResult {
+  jobId: string;
+  subscriptionId: string;
+  occurrenceId: string;
+  scheduledDate: Date;
+  status: string;
+}
+
+// ============================================
+// PORTFOLIO TOOL INTERFACES
+// ============================================
+
+export interface AddPortfolioItemParams {
+  proProfileId: string;
+  jobId: string;
+  title?: string;
+  description?: string;
+}
+
+export interface RequestOptInParams {
+  proProfileId: string;
+  jobId: string;
+  customerId: string;
+  message?: string;
+}
+
+export interface PortfolioItemResult {
+  itemId: string;
+  portfolioId: string;
+  jobId: string;
+  status: string;
+}
+
+export interface OptInRequestResult {
+  requestId: string;
+  status: string;
+  sentTo: string;
+}
+
+// ============================================
+// OFFER TOOL INTERFACES
+// ============================================
+
+export interface CreateOfferLeadParams {
+  campaignId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+  marketingConsentGranted: boolean;
+  source?: string;
+}
+
+export interface SendFollowUpParams {
+  leadId: string;
+  method: 'email' | 'sms';
+  templateId?: string;
+  message?: string;
+}
+
+export interface OfferLeadResult {
+  leadId: string;
+  campaignId: string;
+  status: string;
+  consentRecorded: boolean;
+}
+
+export interface FollowUpResult {
+  followUpId: string;
+  leadId: string;
+  method: string;
+  status: string;
+  attemptNumber: number;
 }
 
 // ============================================
@@ -787,6 +883,419 @@ export class ToolsService {
   }
 
   // ============================================
+  // SUBSCRIPTION TOOL
+  // ============================================
+
+  /**
+   * SubscriptionTool.createOccurrenceJob - Create a job from a subscription occurrence
+   *
+   * Required permissions: subscription:manage
+   * Required flags: SUBSCRIPTIONS_ENABLED
+   *
+   * P1: Stub implementation
+   * P2: Full SubscriptionsService integration
+   */
+  async createOccurrenceJob(
+    params: CreateOccurrenceJobParams,
+    context: ToolContext,
+  ): Promise<ToolResult<SubscriptionJobResult>> {
+    const startTime = Date.now();
+    this.logger.debug('SubscriptionTool.createOccurrenceJob called', { params, sessionId: context.sessionId });
+
+    try {
+      this.ensurePermission(context, 'subscription:manage');
+
+      const enabled = await this.checkFeatureFlag(FEATURE_FLAGS.SUBSCRIPTIONS_ENABLED, context);
+      if (!enabled) {
+        return {
+          success: false,
+          error: 'Subscriptions feature is not enabled',
+          metadata: { executionTimeMs: Date.now() - startTime, toolName: 'SubscriptionTool.createOccurrenceJob' },
+        };
+      }
+
+      // P1 Stub: Return mock result
+      // P2: Integrate with SubscriptionsService.createJobFromOccurrence()
+      const mockJobId = `job_sub_${Date.now()}_stub`;
+
+      return {
+        success: true,
+        data: {
+          jobId: mockJobId,
+          subscriptionId: params.subscriptionId,
+          occurrenceId: params.occurrenceId,
+          scheduledDate: params.scheduledDate,
+          status: 'CREATED',
+        },
+        metadata: {
+          executionTimeMs: Date.now() - startTime,
+          toolName: 'SubscriptionTool.createOccurrenceJob',
+          stub: true,
+        },
+      };
+    } catch (error) {
+      this.logger.error('SubscriptionTool.createOccurrenceJob failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        metadata: { executionTimeMs: Date.now() - startTime, toolName: 'SubscriptionTool.createOccurrenceJob' },
+      };
+    }
+  }
+
+  /**
+   * SubscriptionTool.pause - Pause a subscription
+   *
+   * Required permissions: subscription:manage
+   * Required flags: SUBSCRIPTIONS_ENABLED
+   *
+   * P1: Stub implementation
+   * P2: Full SubscriptionsService + Stripe integration
+   */
+  async pauseSubscription(
+    params: PauseSubscriptionParams,
+    context: ToolContext,
+  ): Promise<ToolResult<{ subscriptionId: string; status: string; pausedAt: Date }>> {
+    const startTime = Date.now();
+    this.logger.debug('SubscriptionTool.pause called', { params, sessionId: context.sessionId });
+
+    try {
+      this.ensurePermission(context, 'subscription:manage');
+
+      const enabled = await this.checkFeatureFlag(FEATURE_FLAGS.SUBSCRIPTIONS_ENABLED, context);
+      if (!enabled) {
+        return {
+          success: false,
+          error: 'Subscriptions feature is not enabled',
+          metadata: { executionTimeMs: Date.now() - startTime, toolName: 'SubscriptionTool.pause' },
+        };
+      }
+
+      // P1 Stub: Return mock result
+      // P2: Integrate with SubscriptionsService.pauseSubscription()
+      return {
+        success: true,
+        data: {
+          subscriptionId: params.subscriptionId,
+          status: 'PAUSED',
+          pausedAt: new Date(),
+        },
+        metadata: {
+          executionTimeMs: Date.now() - startTime,
+          toolName: 'SubscriptionTool.pause',
+          stub: true,
+        },
+      };
+    } catch (error) {
+      this.logger.error('SubscriptionTool.pause failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        metadata: { executionTimeMs: Date.now() - startTime, toolName: 'SubscriptionTool.pause' },
+      };
+    }
+  }
+
+  /**
+   * SubscriptionTool.resume - Resume a paused subscription
+   *
+   * Required permissions: subscription:manage
+   * Required flags: SUBSCRIPTIONS_ENABLED
+   *
+   * P1: Stub implementation
+   * P2: Full SubscriptionsService + Stripe integration
+   */
+  async resumeSubscription(
+    params: ResumeSubscriptionParams,
+    context: ToolContext,
+  ): Promise<ToolResult<{ subscriptionId: string; status: string; resumedAt: Date }>> {
+    const startTime = Date.now();
+    this.logger.debug('SubscriptionTool.resume called', { params, sessionId: context.sessionId });
+
+    try {
+      this.ensurePermission(context, 'subscription:manage');
+
+      const enabled = await this.checkFeatureFlag(FEATURE_FLAGS.SUBSCRIPTIONS_ENABLED, context);
+      if (!enabled) {
+        return {
+          success: false,
+          error: 'Subscriptions feature is not enabled',
+          metadata: { executionTimeMs: Date.now() - startTime, toolName: 'SubscriptionTool.resume' },
+        };
+      }
+
+      // P1 Stub: Return mock result
+      // P2: Integrate with SubscriptionsService.resumeSubscription()
+      return {
+        success: true,
+        data: {
+          subscriptionId: params.subscriptionId,
+          status: 'ACTIVE',
+          resumedAt: new Date(),
+        },
+        metadata: {
+          executionTimeMs: Date.now() - startTime,
+          toolName: 'SubscriptionTool.resume',
+          stub: true,
+        },
+      };
+    } catch (error) {
+      this.logger.error('SubscriptionTool.resume failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        metadata: { executionTimeMs: Date.now() - startTime, toolName: 'SubscriptionTool.resume' },
+      };
+    }
+  }
+
+  // ============================================
+  // PORTFOLIO TOOL
+  // ============================================
+
+  /**
+   * PortfolioTool.addItem - Add item to portfolio from completed job
+   *
+   * Required permissions: portfolio:manage
+   * Required flags: PRO_PORTFOLIO_ENABLED
+   *
+   * P1: Stub implementation
+   * P2: Full PortfolioService integration
+   */
+  async addPortfolioItem(
+    params: AddPortfolioItemParams,
+    context: ToolContext,
+  ): Promise<ToolResult<PortfolioItemResult>> {
+    const startTime = Date.now();
+    this.logger.debug('PortfolioTool.addItem called', { params, sessionId: context.sessionId });
+
+    try {
+      this.ensurePermission(context, 'portfolio:manage');
+
+      const enabled = await this.checkFeatureFlag(FEATURE_FLAGS.PRO_PORTFOLIO_ENABLED, context);
+      if (!enabled) {
+        return {
+          success: false,
+          error: 'Portfolio feature is not enabled',
+          metadata: { executionTimeMs: Date.now() - startTime, toolName: 'PortfolioTool.addItem' },
+        };
+      }
+
+      // P1 Stub: Return mock result
+      // P2: Integrate with PortfolioService.addItemFromJob()
+      const mockItemId = `portfolio_item_${Date.now()}_stub`;
+
+      return {
+        success: true,
+        data: {
+          itemId: mockItemId,
+          portfolioId: `portfolio_${params.proProfileId}`,
+          jobId: params.jobId,
+          status: 'PENDING_OPT_IN',
+        },
+        metadata: {
+          executionTimeMs: Date.now() - startTime,
+          toolName: 'PortfolioTool.addItem',
+          stub: true,
+        },
+      };
+    } catch (error) {
+      this.logger.error('PortfolioTool.addItem failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        metadata: { executionTimeMs: Date.now() - startTime, toolName: 'PortfolioTool.addItem' },
+      };
+    }
+  }
+
+  /**
+   * PortfolioTool.requestOptIn - Request customer opt-in for portfolio inclusion
+   *
+   * Required permissions: portfolio:manage
+   * Required consent: MARKETING_MATERIALS
+   * Required flags: PRO_PORTFOLIO_ENABLED
+   *
+   * P1: Stub implementation
+   * P2: Full ConsentService + notification integration
+   */
+  async requestPortfolioOptIn(
+    params: RequestOptInParams,
+    context: ToolContext,
+  ): Promise<ToolResult<OptInRequestResult>> {
+    const startTime = Date.now();
+    this.logger.debug('PortfolioTool.requestOptIn called', { params, sessionId: context.sessionId });
+
+    try {
+      this.ensurePermission(context, 'portfolio:manage');
+
+      const enabled = await this.checkFeatureFlag(FEATURE_FLAGS.PRO_PORTFOLIO_ENABLED, context);
+      if (!enabled) {
+        return {
+          success: false,
+          error: 'Portfolio feature is not enabled',
+          metadata: { executionTimeMs: Date.now() - startTime, toolName: 'PortfolioTool.requestOptIn' },
+        };
+      }
+
+      // P1 Stub: Return mock result
+      // P2: Send actual opt-in request via email/SMS
+      const mockRequestId = `optin_${Date.now()}_stub`;
+
+      return {
+        success: true,
+        data: {
+          requestId: mockRequestId,
+          status: 'SENT',
+          sentTo: params.customerId,
+        },
+        metadata: {
+          executionTimeMs: Date.now() - startTime,
+          toolName: 'PortfolioTool.requestOptIn',
+          stub: true,
+        },
+      };
+    } catch (error) {
+      this.logger.error('PortfolioTool.requestOptIn failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        metadata: { executionTimeMs: Date.now() - startTime, toolName: 'PortfolioTool.requestOptIn' },
+      };
+    }
+  }
+
+  // ============================================
+  // OFFER TOOL
+  // ============================================
+
+  /**
+   * OfferTool.createLead - Capture a lead from an offer campaign
+   *
+   * Required permissions: offer:manage
+   * Required flags: OFFER_CAMPAIGNS_ENABLED
+   *
+   * P1: Stub implementation
+   * P2: Full OfferLeadsService integration
+   */
+  async createOfferLead(
+    params: CreateOfferLeadParams,
+    context: ToolContext,
+  ): Promise<ToolResult<OfferLeadResult>> {
+    const startTime = Date.now();
+    this.logger.debug('OfferTool.createLead called', { params, sessionId: context.sessionId });
+
+    try {
+      this.ensurePermission(context, 'offer:manage');
+
+      const enabled = await this.checkFeatureFlag(FEATURE_FLAGS.OFFER_CAMPAIGNS_ENABLED, context);
+      if (!enabled) {
+        return {
+          success: false,
+          error: 'Offer campaigns feature is not enabled',
+          metadata: { executionTimeMs: Date.now() - startTime, toolName: 'OfferTool.createLead' },
+        };
+      }
+
+      // Validate marketing consent
+      if (!params.marketingConsentGranted) {
+        return {
+          success: false,
+          error: 'Marketing consent is required to capture leads',
+          metadata: {
+            executionTimeMs: Date.now() - startTime,
+            toolName: 'OfferTool.createLead',
+            consentRequired: true,
+          },
+        };
+      }
+
+      // P1 Stub: Return mock result
+      // P2: Integrate with OfferLeadsService.submitLead()
+      const mockLeadId = `lead_${Date.now()}_stub`;
+
+      return {
+        success: true,
+        data: {
+          leadId: mockLeadId,
+          campaignId: params.campaignId,
+          status: 'NEW',
+          consentRecorded: params.marketingConsentGranted,
+        },
+        metadata: {
+          executionTimeMs: Date.now() - startTime,
+          toolName: 'OfferTool.createLead',
+          stub: true,
+        },
+      };
+    } catch (error) {
+      this.logger.error('OfferTool.createLead failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        metadata: { executionTimeMs: Date.now() - startTime, toolName: 'OfferTool.createLead' },
+      };
+    }
+  }
+
+  /**
+   * OfferTool.sendFollowUp - Send follow-up to a lead
+   *
+   * Required permissions: offer:manage
+   * Required flags: OFFER_CAMPAIGNS_ENABLED
+   *
+   * P1: Stub implementation
+   * P2: Full OfferLeadsService + compliance check integration
+   */
+  async sendFollowUp(
+    params: SendFollowUpParams,
+    context: ToolContext,
+  ): Promise<ToolResult<FollowUpResult>> {
+    const startTime = Date.now();
+    this.logger.debug('OfferTool.sendFollowUp called', { params, sessionId: context.sessionId });
+
+    try {
+      this.ensurePermission(context, 'offer:manage');
+
+      const enabled = await this.checkFeatureFlag(FEATURE_FLAGS.OFFER_CAMPAIGNS_ENABLED, context);
+      if (!enabled) {
+        return {
+          success: false,
+          error: 'Offer campaigns feature is not enabled',
+          metadata: { executionTimeMs: Date.now() - startTime, toolName: 'OfferTool.sendFollowUp' },
+        };
+      }
+
+      // P1 Stub: Return mock result
+      // P2: Integrate with OfferLeadsService.recordFollowUp() + compliance check
+      const mockFollowUpId = `followup_${Date.now()}_stub`;
+
+      return {
+        success: true,
+        data: {
+          followUpId: mockFollowUpId,
+          leadId: params.leadId,
+          method: params.method,
+          status: 'SENT',
+          attemptNumber: 1,
+        },
+        metadata: {
+          executionTimeMs: Date.now() - startTime,
+          toolName: 'OfferTool.sendFollowUp',
+          stub: true,
+        },
+      };
+    } catch (error) {
+      this.logger.error('OfferTool.sendFollowUp failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        metadata: { executionTimeMs: Date.now() - startTime, toolName: 'OfferTool.sendFollowUp' },
+      };
+    }
+  }
+
+  // ============================================
   // TOOL REGISTRY
   // ============================================
 
@@ -835,6 +1344,47 @@ export class ToolsService {
         description: 'Check availability for a pro',
         requiredPermissions: ['calendar:read'],
         requiredFlags: ['BOOKING_ENABLED'],
+      },
+
+      // Phase 3 - Subscription Tools
+      'SubscriptionTool.createOccurrenceJob': {
+        description: 'Create a job from a subscription occurrence',
+        requiredPermissions: ['subscription:manage'],
+        requiredFlags: ['SUBSCRIPTIONS_ENABLED'],
+      },
+      'SubscriptionTool.pause': {
+        description: 'Pause an active subscription',
+        requiredPermissions: ['subscription:manage'],
+        requiredFlags: ['SUBSCRIPTIONS_ENABLED'],
+      },
+      'SubscriptionTool.resume': {
+        description: 'Resume a paused subscription',
+        requiredPermissions: ['subscription:manage'],
+        requiredFlags: ['SUBSCRIPTIONS_ENABLED'],
+      },
+
+      // Phase 3 - Portfolio Tools
+      'PortfolioTool.addItem': {
+        description: 'Add a completed job to a pro portfolio',
+        requiredPermissions: ['portfolio:manage'],
+        requiredFlags: ['PRO_PORTFOLIO_ENABLED'],
+      },
+      'PortfolioTool.requestOptIn': {
+        description: 'Request customer opt-in for portfolio inclusion',
+        requiredPermissions: ['portfolio:manage'],
+        requiredFlags: ['PRO_PORTFOLIO_ENABLED'],
+      },
+
+      // Phase 3 - Offer Tools
+      'OfferTool.createLead': {
+        description: 'Capture a lead from an offer campaign (requires marketing consent)',
+        requiredPermissions: ['offer:manage'],
+        requiredFlags: ['OFFER_CAMPAIGNS_ENABLED'],
+      },
+      'OfferTool.sendFollowUp': {
+        description: 'Send a follow-up message to a lead',
+        requiredPermissions: ['offer:manage'],
+        requiredFlags: ['OFFER_CAMPAIGNS_ENABLED'],
       },
     };
   }

@@ -28,6 +28,12 @@ import { AuditModule } from './modules/audit/audit.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { HealthModule } from './modules/health/health.module';
 
+// Phase 3 modules
+import { HomeownerModule } from './modules/homeowner/homeowner.module';
+import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
+import { OffersModule } from './modules/offers/offers.module';
+import { BranchesModule } from './modules/branches/branches.module';
+
 // Common
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -84,6 +90,12 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     AuditModule,
     PaymentsModule,
     HealthModule,
+
+    // Phase 3 - Marketplace expansion
+    HomeownerModule,
+    SubscriptionsModule,
+    OffersModule,
+    BranchesModule,
   ],
   providers: [
     // Global throttler guard

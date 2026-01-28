@@ -33,7 +33,19 @@ import {
   EscalationHandlingSkill,
   ContractorSearchSkill,
   ReportGenerationSkill,
+  // Phase 3 Skills
+  SubscriptionOpsSkill,
+  PortfolioOpsSkill,
+  OutreachOpsSkill,
+  HomeownerConciergeSkill,
 } from './skills';
+
+// Automation Services
+import {
+  AutomationModeService,
+  ApprovalQueueService,
+  GuardrailsService,
+} from './automation';
 
 /**
  * AI Agent Module
@@ -56,9 +68,9 @@ import {
  * - AgentConfigRegistryService: Agent configurations
  *
  * Agents:
- * - Customer-Facing: Dispatch Concierge, Job Status, Quote Assistant
- * - Contractor-Facing: Dispatch Optimizer, Contractor Onboarding, Earnings Optimizer
- * - Operations: SLA Guardian, Quality Assurance
+ * - Customer-Facing: Dispatch Concierge, Job Status, Quote Assistant, Homeowner Concierge
+ * - Contractor-Facing: Dispatch Optimizer, Contractor Onboarding, Earnings Optimizer, Portfolio Assistant
+ * - Operations: SLA Guardian, Quality Assurance, Subscription Manager, Outreach Coordinator
  * - Admin: Capacity Planning, Policy Configuration, Analytics Insight
  *
  * Dependencies:
@@ -108,6 +120,17 @@ import {
     EscalationHandlingSkill,
     ContractorSearchSkill,
     ReportGenerationSkill,
+
+    // Phase 3 Skills
+    SubscriptionOpsSkill,
+    PortfolioOpsSkill,
+    OutreachOpsSkill,
+    HomeownerConciergeSkill,
+
+    // Automation Services
+    AutomationModeService,
+    ApprovalQueueService,
+    GuardrailsService,
   ],
   exports: [
     AiAgentService,
@@ -115,6 +138,11 @@ import {
     SkillRegistryService,
     LlmGatewayService,
     AgentConfigRegistryService,
+
+    // Phase 3 Automation (used by other modules)
+    AutomationModeService,
+    ApprovalQueueService,
+    GuardrailsService,
   ],
 })
 export class AiAgentModule {}

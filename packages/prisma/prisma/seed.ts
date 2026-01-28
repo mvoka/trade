@@ -1,4 +1,4 @@
-import { PrismaClient, UserRole, DayOfWeek, ScopeType, VerificationStatus } from '../generated';
+import { PrismaClient, UserRole, DayOfWeek, ScopeType, VerificationStatus, BillingInterval } from '../generated';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -45,6 +45,18 @@ async function main() {
       isActive: true,
     },
   });
+
+  // Phase 3: Pool Service Category
+  const poolServiceCategory = await prisma.serviceCategory.upsert({
+    where: { code: 'POOL_SERVICE' },
+    update: {},
+    create: {
+      name: 'Pool Service',
+      code: 'POOL_SERVICE',
+      description: 'Pool maintenance, cleaning, and repair services',
+      isActive: true,
+    },
+  });
   console.log('Created service categories');
 
   // ============================================
@@ -83,6 +95,7 @@ async function main() {
   // FEATURE FLAGS (GLOBAL)
   // ============================================
   const globalFlags = [
+    // Core Platform Flags
     { key: 'DISPATCH_ENABLED', enabled: true, description: 'Enable automatic job dispatch' },
     { key: 'BOOKING_ENABLED', enabled: true, description: 'Enable booking functionality' },
     { key: 'PHONE_AGENT_ENABLED', enabled: false, description: 'Enable AI phone agent' },
@@ -92,6 +105,23 @@ async function main() {
     { key: 'ENABLE_BOOST', enabled: false, description: 'Enable boost campaigns for pros' },
     { key: 'CONSENT_REQUIRED_FOR_RECORDING', enabled: true, description: 'Require consent before call recording' },
     { key: 'PORTFOLIO_OPT_IN_REQUIRED', enabled: true, description: 'Require opt-in for portfolio visibility' },
+
+    // Phase 3: Global Feature Flags (Admin can enable per region/org)
+    { key: 'HOMEOWNER_MARKETPLACE_ENABLED', enabled: false, description: 'Enable homeowner marketplace module' },
+    { key: 'SUBSCRIPTIONS_ENABLED', enabled: false, description: 'Enable subscription services module' },
+    { key: 'POOL_SERVICE_ENABLED', enabled: false, description: 'Enable pool service category' },
+    { key: 'PRO_PORTFOLIO_ENABLED', enabled: true, description: 'Enable pro portfolio pages' },
+    { key: 'OFFER_CAMPAIGNS_ENABLED', enabled: false, description: 'Enable offer campaign lead generation' },
+    { key: 'MULTI_BRANCH_ENABLED', enabled: false, description: 'Enable multi-branch org support' },
+    { key: 'AGENT_ASSIST_MODE_ENABLED', enabled: false, description: 'Enable agent ASSIST automation mode' },
+    { key: 'AGENT_AUTO_MODE_ENABLED', enabled: false, description: 'Enable agent AUTO automation mode' },
+    { key: 'AGENT_SUBSCRIPTION_OPS_ENABLED', enabled: false, description: 'Enable agent subscription operations skill' },
+    { key: 'AGENT_PORTFOLIO_OPS_ENABLED', enabled: false, description: 'Enable agent portfolio operations skill' },
+    { key: 'AGENT_OUTREACH_OPS_ENABLED', enabled: false, description: 'Enable agent outreach operations skill' },
+    { key: 'AGENT_HOMEOWNER_CONCIERGE_ENABLED', enabled: false, description: 'Enable homeowner concierge agent' },
+    { key: 'AGENT_SUBSCRIPTION_MANAGER_ENABLED', enabled: false, description: 'Enable subscription manager agent' },
+    { key: 'AGENT_PORTFOLIO_ASSISTANT_ENABLED', enabled: false, description: 'Enable portfolio assistant agent' },
+    { key: 'AGENT_OUTREACH_COORDINATOR_ENABLED', enabled: false, description: 'Enable outreach coordinator agent' },
   ];
 
   for (const flag of globalFlags) {
@@ -126,6 +156,7 @@ async function main() {
   // POLICIES (GLOBAL)
   // ============================================
   const globalPolicies = [
+    // Core Policies
     { key: 'BOOKING_MODE', value: 'EXACT', description: 'Booking mode: EXACT or WINDOW' },
     { key: 'PHONE_AGENT_MODE', value: 'INBOUND_ONLY', description: 'Phone agent mode: INBOUND_ONLY or INBOUND_OUTBOUND' },
     { key: 'SLA_ACCEPT_MINUTES', value: 5, description: 'Minutes for pro to accept dispatch' },
@@ -140,6 +171,13 @@ async function main() {
     { key: 'BUFFER_MINUTES', value: 15, description: 'Buffer between bookings' },
     { key: 'MAX_BOOKINGS_PER_DAY', value: 10, description: 'Maximum bookings per pro per day' },
     { key: 'CANCELLATION_HOURS', value: 24, description: 'Hours before for free cancellation' },
+
+    // Phase 3 Policies
+    { key: 'SUBSCRIPTION_AUTO_CREATE_JOB_DAYS', value: 7, description: 'Days before scheduled date to auto-create job from subscription' },
+    { key: 'PORTFOLIO_REQUIRE_OPT_IN', value: true, description: 'Require customer opt-in for portfolio photos' },
+    { key: 'OFFER_MAX_FOLLOWUPS', value: 3, description: 'Maximum follow-up attempts per lead' },
+    { key: 'AUTOMATION_MAX_ACTIONS_PER_HOUR', value: 10, description: 'Maximum agent auto-actions per hour (guardrail)' },
+    { key: 'AUTOMATION_APPROVAL_THRESHOLD_CENTS', value: 10000, description: 'Amount in cents requiring approval ($100 default)' },
   ];
 
   for (const policy of globalPolicies) {
@@ -644,6 +682,214 @@ async function main() {
     },
   });
   console.log('Created booking policies');
+
+  // ============================================
+  // PHASE 3: POOL SERVICE PLANS (Sample Templates)
+  // ============================================
+  const poolServicePlans = [
+    {
+      id: 'pool-weekly-maintenance',
+      name: 'Weekly Pool Maintenance',
+      description: 'Complete weekly pool service including chemical balancing, skimming, and filter cleaning',
+      billingInterval: BillingInterval.MONTHLY,
+      pricePerIntervalCents: 19900, // $199/month
+      visitsPerInterval: 4,
+      estimatedDurationMins: 45,
+      serviceTemplate: {
+        title: 'Weekly Pool Maintenance',
+        description: 'Regular weekly pool maintenance service',
+        checklistItems: [
+          'Test and balance water chemistry',
+          'Skim surface debris',
+          'Vacuum pool floor',
+          'Clean skimmer and pump baskets',
+          'Check and backwash filter if needed',
+          'Inspect equipment operation',
+        ],
+      },
+    },
+    {
+      id: 'pool-biweekly-maintenance',
+      name: 'Bi-Weekly Pool Maintenance',
+      description: 'Bi-weekly pool service for moderate pool usage',
+      billingInterval: BillingInterval.MONTHLY,
+      pricePerIntervalCents: 12900, // $129/month
+      visitsPerInterval: 2,
+      estimatedDurationMins: 60,
+      serviceTemplate: {
+        title: 'Bi-Weekly Pool Maintenance',
+        description: 'Regular bi-weekly pool maintenance service',
+        checklistItems: [
+          'Test and balance water chemistry',
+          'Skim surface debris',
+          'Vacuum pool floor',
+          'Brush walls and tile',
+          'Clean skimmer and pump baskets',
+          'Check and backwash filter',
+          'Inspect all equipment',
+        ],
+      },
+    },
+    {
+      id: 'pool-opening-seasonal',
+      name: 'Pool Opening (Seasonal)',
+      description: 'Complete pool opening service for spring/summer season',
+      billingInterval: BillingInterval.ONE_TIME,
+      pricePerIntervalCents: 29900, // $299
+      visitsPerInterval: 1,
+      estimatedDurationMins: 180,
+      serviceTemplate: {
+        title: 'Pool Opening Service',
+        description: 'Seasonal pool opening and startup',
+        checklistItems: [
+          'Remove and clean pool cover',
+          'Reinstall ladders, rails, and accessories',
+          'Prime and start pump',
+          'Start and test filter system',
+          'Add startup chemicals',
+          'Test and balance water',
+          'Inspect all equipment',
+          'Vacuum and skim pool',
+          'Provide opening report',
+        ],
+      },
+    },
+    {
+      id: 'pool-closing-seasonal',
+      name: 'Pool Closing (Seasonal)',
+      description: 'Complete pool closing service for winter season',
+      billingInterval: BillingInterval.ONE_TIME,
+      pricePerIntervalCents: 24900, // $249
+      visitsPerInterval: 1,
+      estimatedDurationMins: 150,
+      serviceTemplate: {
+        title: 'Pool Closing Service',
+        description: 'Seasonal pool closing and winterization',
+        checklistItems: [
+          'Clean pool thoroughly',
+          'Balance water chemistry for winter',
+          'Add winterizing chemicals',
+          'Lower water level',
+          'Blow out plumbing lines',
+          'Add antifreeze to lines',
+          'Remove and store accessories',
+          'Install winter cover',
+          'Provide closing report',
+        ],
+      },
+    },
+  ];
+
+  for (const plan of poolServicePlans) {
+    await prisma.servicePlan.upsert({
+      where: { id: plan.id },
+      update: {
+        name: plan.name,
+        description: plan.description,
+        billingInterval: plan.billingInterval,
+        pricePerIntervalCents: plan.pricePerIntervalCents,
+        visitsPerInterval: plan.visitsPerInterval,
+        estimatedDurationMins: plan.estimatedDurationMins,
+        serviceTemplate: plan.serviceTemplate,
+        serviceCategoryId: poolServiceCategory.id,
+      },
+      create: {
+        id: plan.id,
+        name: plan.name,
+        description: plan.description,
+        billingInterval: plan.billingInterval,
+        pricePerIntervalCents: plan.pricePerIntervalCents,
+        visitsPerInterval: plan.visitsPerInterval,
+        estimatedDurationMins: plan.estimatedDurationMins,
+        serviceTemplate: plan.serviceTemplate,
+        serviceCategoryId: poolServiceCategory.id,
+        isActive: true,
+        isPublic: true,
+      },
+    });
+  }
+  console.log('Created pool service plans');
+
+  // ============================================
+  // PHASE 3: POOL SERVICE JOB TEMPLATES
+  // ============================================
+  const poolJobTemplates = [
+    {
+      name: 'Pool Chemical Treatment',
+      categoryCode: 'POOL_SERVICE',
+      templateContent: {
+        title: 'Pool Chemical Treatment',
+        description: 'One-time chemical treatment service',
+        checklistItems: ['Test current levels', 'Add required chemicals', 'Re-test after treatment', 'Document results'],
+        estimatedHours: 1,
+      },
+      estimatedDuration: 60,
+    },
+    {
+      name: 'Pool Equipment Repair',
+      categoryCode: 'POOL_SERVICE',
+      templateContent: {
+        title: 'Pool Equipment Repair',
+        description: 'Diagnose and repair pool equipment',
+        checklistItems: ['Inspect equipment', 'Diagnose issue', 'Perform repair', 'Test operation', 'Clean up work area'],
+        estimatedHours: 2,
+      },
+      estimatedDuration: 120,
+    },
+    {
+      name: 'Pool Leak Detection',
+      categoryCode: 'POOL_SERVICE',
+      templateContent: {
+        title: 'Pool Leak Detection',
+        description: 'Professional leak detection service',
+        checklistItems: ['Mark water level', 'Pressure test plumbing', 'Dye test suspected areas', 'Document findings', 'Provide repair estimate'],
+        estimatedHours: 2.5,
+      },
+      estimatedDuration: 150,
+    },
+  ];
+
+  for (const template of poolJobTemplates) {
+    await prisma.jobTemplate.upsert({
+      where: { id: template.name.toLowerCase().replace(/ /g, '-') },
+      update: template,
+      create: {
+        id: template.name.toLowerCase().replace(/ /g, '-'),
+        ...template,
+      },
+    });
+  }
+  console.log('Created pool service job templates');
+
+  // ============================================
+  // PHASE 3: VERIFICATION CHECKLIST FOR POOL SERVICE
+  // ============================================
+  const poolVerificationDocs = [
+    { type: 'LICENSE', name: 'Pool Operator License', expiryRequired: true },
+    { type: 'INSURANCE', name: 'Liability Insurance', expiryRequired: true },
+    { type: 'CERTIFICATION', name: 'CPO Certification', expiryRequired: true },
+  ];
+
+  for (const doc of poolVerificationDocs) {
+    await prisma.verificationChecklist.upsert({
+      where: {
+        serviceCategoryId_documentType: {
+          serviceCategoryId: poolServiceCategory.id,
+          documentType: doc.type,
+        },
+      },
+      update: {},
+      create: {
+        serviceCategoryId: poolServiceCategory.id,
+        documentType: doc.type,
+        name: doc.name,
+        description: `Required ${doc.name} for Pool Service`,
+        isRequired: true,
+        expiryRequired: doc.expiryRequired,
+      },
+    });
+  }
+  console.log('Created pool service verification checklist');
 
   console.log('Seed completed successfully!');
 }

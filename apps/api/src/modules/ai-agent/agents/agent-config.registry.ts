@@ -331,6 +331,146 @@ const DEFAULT_AGENT_CONFIGS: AgentConfig[] = [
       version: '1.0.0',
     },
   },
+
+  // ============================================
+  // PHASE 3: MARKETPLACE AGENTS
+  // ============================================
+  {
+    id: 'SUBSCRIPTION_MANAGER',
+    name: 'Subscription Manager',
+    description: 'Manages subscription lifecycle with configurable automation (ASSIST/AUTO modes)',
+    category: 'OPERATIONS',
+    systemPromptKey: 'agent.subscription-manager',
+    allowedSkills: ['SubscriptionOps', 'ScheduleManagement'],
+    allowedTools: [
+      'SubscriptionTool.createOccurrenceJob',
+      'SubscriptionTool.pause',
+      'SubscriptionTool.resume',
+      'EmailTool.sendEmail',
+      'SmsTool.sendSms',
+    ],
+    requiredFlags: ['AGENT_SUBSCRIPTION_OPS_ENABLED'],
+    requiredPermissions: ['subscription:manage'],
+    maxTurns: 25,
+    constraints: {
+      canInitiateOutbound: true,
+      canAccessPII: true,
+      requiresApprovalFor: [
+        'SubscriptionTool.pause',
+        'cancel_subscription',
+      ],
+    },
+    llmConfig: {
+      temperature: 0.3,
+      maxTokens: 2048,
+    },
+    escalation: {
+      triggerKeywords: ['billing issue', 'charge', 'dispute', 'refund'],
+      targetQueue: 'billing-support',
+    },
+    metadata: {
+      version: '1.0.0',
+      phase: '3',
+      automationDomain: 'scheduling',
+    },
+  },
+  {
+    id: 'HOMEOWNER_CONCIERGE',
+    name: 'Homeowner Concierge',
+    description: 'Customer-facing agent for homeowner booking, subscription management, and inquiries',
+    category: 'CUSTOMER_FACING',
+    systemPromptKey: 'agent.homeowner-concierge',
+    allowedSkills: ['HomeownerConcierge', 'JobIntake', 'ScheduleManagement', 'StatusInquiry'],
+    allowedTools: [
+      'BookingTool.createBooking',
+      'BookingTool.getSlots',
+      'CalendarTool.checkAvailability',
+      'EmailTool.sendEmail',
+    ],
+    requiredFlags: ['AGENT_HOMEOWNER_CONCIERGE_ENABLED'],
+    requiredPermissions: [],
+    maxTurns: 30,
+    constraints: {
+      canInitiateOutbound: true,
+      canAccessPII: false,
+      requiresApprovalFor: ['BookingTool.createBooking'],
+    },
+    llmConfig: {
+      temperature: 0.7,
+      maxTokens: 2048,
+    },
+    escalation: {
+      triggerKeywords: ['complaint', 'frustrated', 'supervisor', 'refund', 'cancel'],
+      sentimentThreshold: -0.5,
+      targetQueue: 'customer-support',
+    },
+    metadata: {
+      version: '1.0.0',
+      phase: '3',
+    },
+  },
+  {
+    id: 'PORTFOLIO_ASSISTANT',
+    name: 'Portfolio Assistant',
+    description: 'Helps contractors build and manage their public portfolio',
+    category: 'CONTRACTOR_FACING',
+    systemPromptKey: 'agent.portfolio-assistant',
+    allowedSkills: ['PortfolioOps', 'DocumentUpload'],
+    allowedTools: [
+      'PortfolioTool.addItem',
+      'PortfolioTool.requestOptIn',
+    ],
+    requiredFlags: ['AGENT_PORTFOLIO_OPS_ENABLED'],
+    requiredPermissions: ['portfolio:manage'],
+    maxTurns: 25,
+    constraints: {
+      canInitiateOutbound: true, // For opt-in requests
+      canAccessPII: false,
+      requiresApprovalFor: ['PortfolioTool.requestOptIn'],
+    },
+    llmConfig: {
+      temperature: 0.6,
+      maxTokens: 2048,
+    },
+    metadata: {
+      version: '1.0.0',
+      phase: '3',
+    },
+  },
+  {
+    id: 'OUTREACH_COORDINATOR',
+    name: 'Outreach Coordinator',
+    description: 'Manages compliant lead generation campaigns and follow-up',
+    category: 'OPERATIONS',
+    systemPromptKey: 'agent.outreach-coordinator',
+    allowedSkills: ['OutreachOps'],
+    allowedTools: [
+      'OfferTool.createLead',
+      'OfferTool.sendFollowUp',
+      'EmailTool.sendEmail',
+      'SmsTool.sendSms',
+    ],
+    requiredFlags: ['AGENT_OUTREACH_OPS_ENABLED'],
+    requiredPermissions: ['offers:manage'],
+    maxTurns: 25,
+    constraints: {
+      canInitiateOutbound: true,
+      canAccessPII: true,
+      requiresApprovalFor: [
+        'OfferTool.sendFollowUp',
+        'SmsTool.sendSms',
+      ],
+    },
+    llmConfig: {
+      temperature: 0.4,
+      maxTokens: 2048,
+    },
+    metadata: {
+      version: '1.0.0',
+      phase: '3',
+      automationDomain: 'outreach',
+    },
+  },
 ];
 
 // ============================================

@@ -387,19 +387,7 @@ async function main() {
   for (let i = 0; i < electricalPros.length; i++) {
     const pro = electricalPros[i];
 
-    // Create Organization
-    const org = await prisma.org.create({
-      data: {
-        name: pro.name,
-        legalName: `${pro.name} Ltd.`,
-        email: pro.email,
-        city: 'York Region',
-        province: 'ON',
-        country: 'CA',
-      },
-    });
-
-    // Create Pro User
+    // Create Pro User first
     const user = await prisma.user.upsert({
       where: { email: pro.email },
       update: {},
@@ -415,71 +403,100 @@ async function main() {
       },
     });
 
-    // Create OrgMember
-    await prisma.orgMember.create({
-      data: {
-        orgId: org.id,
-        userId: user.id,
-        role: 'owner',
-      },
+    // Check if org already exists for this user
+    let orgMember = await prisma.orgMember.findFirst({
+      where: { userId: user.id },
+      include: { org: true },
     });
 
-    // Create ProProfile
-    const proProfile = await prisma.proProfile.create({
-      data: {
-        userId: user.id,
-        orgId: org.id,
-        regionId: yorkRegion.id,
-        businessName: pro.name,
-        businessEmail: pro.email,
-        businessPhone: `+1416555${1000 + i}`,
-        bio: `Professional electrical services in York Region. ${10 + i} years of experience.`,
-        yearsExperience: 10 + i,
-        verificationStatus: i < 3 ? VerificationStatus.APPROVED : VerificationStatus.PENDING,
-        verifiedAt: i < 3 ? new Date() : null,
-        avgResponseMinutes: 3 + Math.random() * 5,
-        completionRate: 0.9 + Math.random() * 0.1,
-        totalJobsCompleted: Math.floor(50 + Math.random() * 100),
-        serviceCategories: {
-          connect: { id: electricalCategory.id },
-        },
-      },
-    });
-
-    // Create ServiceArea
-    await prisma.serviceArea.create({
-      data: {
-        proProfileId: proProfile.id,
-        centerLat: pro.lat,
-        centerLng: pro.lng,
-        radiusKm: pro.radius,
-      },
-    });
-
-    // Create ServiceHours
-    for (const hours of serviceHoursTemplate) {
-      await prisma.serviceHours.create({
+    let org;
+    if (orgMember) {
+      org = orgMember.org;
+    } else {
+      // Create Organization
+      org = await prisma.org.create({
         data: {
-          proProfileId: proProfile.id,
-          dayOfWeek: hours.day,
-          startTime: hours.start,
-          endTime: hours.end,
+          name: pro.name,
+          legalName: `${pro.name} Ltd.`,
+          email: pro.email,
+          city: 'York Region',
+          province: 'ON',
+          country: 'CA',
+        },
+      });
+
+      // Create OrgMember
+      await prisma.orgMember.create({
+        data: {
+          orgId: org.id,
+          userId: user.id,
+          role: 'owner',
         },
       });
     }
 
-    // Create AvailabilityRules
-    for (const hours of serviceHoursTemplate) {
-      await prisma.availabilityRule.create({
+    // Create or update ProProfile
+    let proProfile = await prisma.proProfile.findUnique({
+      where: { userId: user.id },
+    });
+
+    if (!proProfile) {
+      proProfile = await prisma.proProfile.create({
         data: {
-          proProfileId: proProfile.id,
-          dayOfWeek: hours.day,
-          slots: [
-            { startTime: hours.start, endTime: '12:00' },
-            { startTime: '13:00', endTime: hours.end },
-          ],
+          userId: user.id,
+          orgId: org.id,
+          regionId: yorkRegion.id,
+          businessName: pro.name,
+          businessEmail: pro.email,
+          businessPhone: `+1416555${1000 + i}`,
+          bio: `Professional electrical services in York Region. ${10 + i} years of experience.`,
+          yearsExperience: 10 + i,
+          verificationStatus: i < 3 ? VerificationStatus.APPROVED : VerificationStatus.PENDING,
+          verifiedAt: i < 3 ? new Date() : null,
+          avgResponseMinutes: 3 + Math.random() * 5,
+          completionRate: 0.9 + Math.random() * 0.1,
+          totalJobsCompleted: Math.floor(50 + Math.random() * 100),
+          serviceCategories: {
+            connect: { id: electricalCategory.id },
+          },
         },
       });
+
+      // Create ServiceArea
+      await prisma.serviceArea.create({
+        data: {
+          proProfileId: proProfile.id,
+          centerLat: pro.lat,
+          centerLng: pro.lng,
+          radiusKm: pro.radius,
+        },
+      });
+
+      // Create ServiceHours
+      for (const hours of serviceHoursTemplate) {
+        await prisma.serviceHours.create({
+          data: {
+            proProfileId: proProfile.id,
+            dayOfWeek: hours.day,
+            startTime: hours.start,
+            endTime: hours.end,
+          },
+        });
+      }
+
+      // Create AvailabilityRules
+      for (const hours of serviceHoursTemplate) {
+        await prisma.availabilityRule.create({
+          data: {
+            proProfileId: proProfile.id,
+            dayOfWeek: hours.day,
+            slots: [
+              { startTime: hours.start, endTime: '12:00' },
+              { startTime: '13:00', endTime: hours.end },
+            ],
+          },
+        });
+      }
     }
   }
   console.log('Created electrical pros');
@@ -488,19 +505,7 @@ async function main() {
   for (let i = 0; i < plumbingPros.length; i++) {
     const pro = plumbingPros[i];
 
-    // Create Organization
-    const org = await prisma.org.create({
-      data: {
-        name: pro.name,
-        legalName: `${pro.name} Ltd.`,
-        email: pro.email,
-        city: 'York Region',
-        province: 'ON',
-        country: 'CA',
-      },
-    });
-
-    // Create Pro User
+    // Create Pro User first
     const user = await prisma.user.upsert({
       where: { email: pro.email },
       update: {},
@@ -516,79 +521,108 @@ async function main() {
       },
     });
 
-    // Create OrgMember
-    await prisma.orgMember.create({
-      data: {
-        orgId: org.id,
-        userId: user.id,
-        role: 'owner',
-      },
+    // Check if org already exists for this user
+    let orgMember = await prisma.orgMember.findFirst({
+      where: { userId: user.id },
+      include: { org: true },
     });
 
-    // Create ProProfile
-    const proProfile = await prisma.proProfile.create({
-      data: {
-        userId: user.id,
-        orgId: org.id,
-        regionId: yorkRegion.id,
-        businessName: pro.name,
-        businessEmail: pro.email,
-        businessPhone: `+1416555${2000 + i}`,
-        bio: `Professional plumbing services in York Region. ${8 + i} years of experience.`,
-        yearsExperience: 8 + i,
-        verificationStatus: i < 3 ? VerificationStatus.APPROVED : VerificationStatus.PENDING,
-        verifiedAt: i < 3 ? new Date() : null,
-        avgResponseMinutes: 4 + Math.random() * 6,
-        completionRate: 0.88 + Math.random() * 0.12,
-        totalJobsCompleted: Math.floor(40 + Math.random() * 80),
-        serviceCategories: {
-          connect: { id: plumbingCategory.id },
-        },
-      },
-    });
-
-    // Create ServiceArea
-    await prisma.serviceArea.create({
-      data: {
-        proProfileId: proProfile.id,
-        centerLat: pro.lat,
-        centerLng: pro.lng,
-        radiusKm: pro.radius,
-      },
-    });
-
-    // Create ServiceHours (different hours for plumbers)
-    const plumbingHours = [
-      { day: DayOfWeek.MONDAY, start: '07:00', end: '18:00' },
-      { day: DayOfWeek.TUESDAY, start: '07:00', end: '18:00' },
-      { day: DayOfWeek.WEDNESDAY, start: '07:00', end: '18:00' },
-      { day: DayOfWeek.THURSDAY, start: '07:00', end: '18:00' },
-      { day: DayOfWeek.FRIDAY, start: '07:00', end: '16:00' },
-    ];
-
-    for (const hours of plumbingHours) {
-      await prisma.serviceHours.create({
+    let org;
+    if (orgMember) {
+      org = orgMember.org;
+    } else {
+      // Create Organization
+      org = await prisma.org.create({
         data: {
-          proProfileId: proProfile.id,
-          dayOfWeek: hours.day,
-          startTime: hours.start,
-          endTime: hours.end,
+          name: pro.name,
+          legalName: `${pro.name} Ltd.`,
+          email: pro.email,
+          city: 'York Region',
+          province: 'ON',
+          country: 'CA',
+        },
+      });
+
+      // Create OrgMember
+      await prisma.orgMember.create({
+        data: {
+          orgId: org.id,
+          userId: user.id,
+          role: 'owner',
         },
       });
     }
 
-    // Create AvailabilityRules
-    for (const hours of plumbingHours) {
-      await prisma.availabilityRule.create({
+    // Create or update ProProfile
+    let proProfile = await prisma.proProfile.findUnique({
+      where: { userId: user.id },
+    });
+
+    if (!proProfile) {
+      proProfile = await prisma.proProfile.create({
         data: {
-          proProfileId: proProfile.id,
-          dayOfWeek: hours.day,
-          slots: [
-            { startTime: hours.start, endTime: '12:00' },
-            { startTime: '12:30', endTime: hours.end },
-          ],
+          userId: user.id,
+          orgId: org.id,
+          regionId: yorkRegion.id,
+          businessName: pro.name,
+          businessEmail: pro.email,
+          businessPhone: `+1416555${2000 + i}`,
+          bio: `Professional plumbing services in York Region. ${8 + i} years of experience.`,
+          yearsExperience: 8 + i,
+          verificationStatus: i < 3 ? VerificationStatus.APPROVED : VerificationStatus.PENDING,
+          verifiedAt: i < 3 ? new Date() : null,
+          avgResponseMinutes: 4 + Math.random() * 6,
+          completionRate: 0.88 + Math.random() * 0.12,
+          totalJobsCompleted: Math.floor(40 + Math.random() * 80),
+          serviceCategories: {
+            connect: { id: plumbingCategory.id },
+          },
         },
       });
+
+      // Create ServiceArea
+      await prisma.serviceArea.create({
+        data: {
+          proProfileId: proProfile.id,
+          centerLat: pro.lat,
+          centerLng: pro.lng,
+          radiusKm: pro.radius,
+        },
+      });
+
+      // Create ServiceHours (different hours for plumbers)
+      const plumbingHours = [
+        { day: DayOfWeek.MONDAY, start: '07:00', end: '18:00' },
+        { day: DayOfWeek.TUESDAY, start: '07:00', end: '18:00' },
+        { day: DayOfWeek.WEDNESDAY, start: '07:00', end: '18:00' },
+        { day: DayOfWeek.THURSDAY, start: '07:00', end: '18:00' },
+        { day: DayOfWeek.FRIDAY, start: '07:00', end: '16:00' },
+      ];
+
+      for (const hours of plumbingHours) {
+        await prisma.serviceHours.create({
+          data: {
+            proProfileId: proProfile.id,
+            dayOfWeek: hours.day,
+            startTime: hours.start,
+            endTime: hours.end,
+          },
+        });
+      }
+
+      // Create AvailabilityRules
+      for (const hours of plumbingHours) {
+        await prisma.availabilityRule.create({
+          data: {
+            proProfileId: proProfile.id,
+            dayOfWeek: hours.day,
+            slots: [
+              { startTime: hours.start, endTime: '12:00' },
+              { startTime: '12:30', endTime: hours.end },
+            ],
+          },
+        });
+      }
     }
   }
   console.log('Created plumbing pros');

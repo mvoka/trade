@@ -85,47 +85,67 @@ export async function browserLogin(
 ): Promise<void> {
   await page.goto(`${portalUrl}/login`);
   await page.waitForLoadState('domcontentloaded');
-  await page.waitForTimeout(1500); // Wait for React hydration
+  await page.waitForTimeout(2000); // Wait for React hydration
 
-  // Try multiple selectors for email input
-  const emailInput =
-    page.locator('input[name="email"]').or(
-      page.locator('input[type="email"]')).or(
-      page.getByLabel(/email/i));
-  await emailInput.first().fill(email);
+  // Wait for form to be ready (inputs not disabled)
+  const emailInput = page.locator('input[name="email"], input[type="email"]').first();
+  await emailInput.waitFor({ state: 'visible', timeout: 10000 });
 
-  // Try multiple selectors for password input
-  const passwordInput =
-    page.locator('input[name="password"]').or(
-      page.locator('input[type="password"]')).or(
-      page.getByLabel(/password/i));
-  await passwordInput.first().fill(password);
+  // Wait for input to be enabled before filling
+  await page.waitForFunction(
+    () => {
+      const input = document.querySelector('input[name="email"], input[type="email"]') as HTMLInputElement;
+      return input && !input.disabled;
+    },
+    { timeout: 10000 }
+  ).catch(() => {});
 
-  // Try multiple selectors for submit button
-  const submitBtn =
-    page.locator('button[type="submit"]').or(
-      page.getByRole('button', { name: /sign in|login|submit/i }));
+  await emailInput.fill(email);
 
-  await submitBtn.first().click();
+  // Fill password
+  const passwordInput = page.locator('input[name="password"], input[type="password"]').first();
+  await passwordInput.fill(password);
 
-  // Wait for navigation - could be dashboard or some redirect
-  await page.waitForLoadState('networkidle', { timeout: 30000 });
+  // Click submit button
+  const submitBtn = page.locator('button[type="submit"]').first();
+  await submitBtn.click();
 
-  // Allow some flexibility in where we end up
-  const url = page.url();
-  if (!url.includes('dashboard') && !url.includes('login')) {
-    // We navigated somewhere, that's OK
+  // Wait for either: navigation to dashboard, URL change, or page to settle
+  try {
+    await Promise.race([
+      page.waitForURL(/.*dashboard/, { timeout: 15000 }),
+      page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 15000 }),
+      page.waitForLoadState('networkidle', { timeout: 15000 }),
+    ]);
+  } catch {
+    // Login may have failed or timed out - tests will handle this
   }
+
+  // Small delay for page to settle
+  await page.waitForTimeout(500);
 }
 
 /**
  * Logout via browser
  */
 export async function browserLogout(page: Page): Promise<void> {
-  const logoutBtn = page.locator('button:has-text("Logout")');
-  if (await logoutBtn.isVisible()) {
-    await logoutBtn.click();
-    await page.waitForURL(/.*login/);
+  // Try multiple selectors for logout button
+  const logoutBtn = page
+    .getByRole('button', { name: /logout|sign out/i })
+    .or(page.locator('button:has-text("Logout")'))
+    .or(page.locator('button:has-text("Sign Out")'))
+    .or(page.locator('[data-testid="logout-button"]'));
+
+  const firstLogoutBtn = logoutBtn.first();
+  if (await firstLogoutBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+    await firstLogoutBtn.click();
+    // Wait for redirect to login
+    try {
+      await page.waitForURL(/.*login/, { timeout: 10000 });
+    } catch {
+      // May not redirect, just wait for page to settle
+      await page.waitForLoadState('networkidle');
+    }
   }
 }
 

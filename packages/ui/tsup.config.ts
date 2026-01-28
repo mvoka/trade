@@ -4,6 +4,8 @@ export default defineConfig({
   entry: [
     "src/index.ts",
     "src/components/index.ts",
+    "src/hooks/index.ts",
+    "src/providers/index.ts",
     "src/lib/utils.ts",
   ],
   format: ["esm"],

@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { useJobsStore } from '@/lib/stores/jobs-store';
 import { JobStatus } from '@/components/jobs/job-status';
+import { Button, UserMenu } from '@trades/ui/components';
+import { toast } from '@trades/ui/hooks';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -30,6 +32,10 @@ export default function DashboardPage() {
 
   const handleLogout = () => {
     logout();
+    toast.success({
+      title: 'Signed out',
+      description: 'You have been successfully signed out.',
+    });
     router.push('/login');
   };
 
@@ -53,17 +59,38 @@ export default function DashboardPage() {
     <main className="min-h-screen bg-gray-50">
       <header className="bg-white border-b">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-primary-600">Trades Dispatch</h1>
+          <Link href="/dashboard" className="text-xl font-bold text-primary">
+            Trades Dispatch
+          </Link>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-muted-foreground">
-              {user.email}
-            </span>
-            <button
-              onClick={handleLogout}
-              className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3"
-            >
-              Logout
-            </button>
+            <nav className="hidden md:flex items-center gap-4">
+              <Link
+                href="/dashboard"
+                className="text-sm font-medium text-primary"
+              >
+                Dashboard
+              </Link>
+              <Link
+                href="/jobs"
+                className="text-sm font-medium text-muted-foreground hover:text-foreground"
+              >
+                Jobs
+              </Link>
+              <Link
+                href="/jobs/new"
+                className="text-sm font-medium text-muted-foreground hover:text-foreground"
+              >
+                New Request
+              </Link>
+            </nav>
+            <UserMenu
+              user={{
+                name: `${user.firstName} ${user.lastName}`,
+                email: user.email,
+              }}
+              onLogout={handleLogout}
+              onProfile={() => router.push('/profile')}
+            />
           </div>
         </div>
       </header>

@@ -101,6 +101,9 @@ export {
   ToastAction,
 } from "./toast";
 
+// Toaster
+export { Toaster } from "./toaster";
+
 // Avatar
 export { Avatar, AvatarImage, AvatarFallback } from "./avatar";
 
@@ -109,3 +112,31 @@ export { Separator } from "./separator";
 
 // Skeleton
 export { Skeleton } from "./skeleton";
+
+// Form Components
+export {
+  FormField,
+  FormInput,
+  FormTextarea,
+  FormSelect,
+  FormCheckbox,
+  FormRadioGroup,
+} from "./form";
+export type {
+  FormFieldProps,
+  FormInputProps,
+  FormTextareaProps,
+  FormSelectProps,
+  SelectOption,
+  FormCheckboxProps,
+  FormRadioGroupProps,
+  RadioOption,
+} from "./form";
+
+// Navigation Components
+export { DashboardNav, NavItem, UserMenu } from "./nav";
+export type { DashboardNavProps, NavItemConfig } from "./nav";
+
+// Chat Components
+export { ChatWidget } from "./chat";
+export type { ChatWidgetProps, ChatMessage } from "./chat";

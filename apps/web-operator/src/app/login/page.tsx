@@ -3,6 +3,19 @@
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/stores/auth-store';
+import {
+  Button,
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  CardFooter,
+  Alert,
+  AlertDescription,
+  FormInput,
+} from '@trades/ui/components';
+import { toast } from '@trades/ui/hooks';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -16,67 +29,84 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
+      toast.success({
+        title: 'Welcome!',
+        description: 'You have successfully signed in to Operator Console.',
+      });
       router.push('/dashboard');
     } catch {
       // Error is handled by the store
     }
   };
 
+  const isFormValid = email.length > 0 && password.length > 0;
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-24">
+    <main className="flex min-h-screen flex-col items-center justify-center p-6 bg-muted/30">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold">Operator Console</h1>
-          <p className="text-muted-foreground mt-2">Sign in to dispatch operations</p>
+          <p className="text-muted-foreground mt-2">
+            Dispatch operations management
+          </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-md">
-              {error}
-            </div>
-          )}
+        <Card>
+          <CardHeader>
+            <CardTitle>Operator Sign In</CardTitle>
+            <CardDescription>
+              Enter your credentials to access dispatch operations
+            </CardDescription>
+          </CardHeader>
 
-          <div className="space-y-2">
-            <label htmlFor="email" className="text-sm font-medium">
-              Email
-            </label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-              placeholder="operator@example.com"
-            />
-          </div>
+          <form onSubmit={handleSubmit}>
+            <CardContent className="space-y-4">
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
 
-          <div className="space-y-2">
-            <label htmlFor="password" className="text-sm font-medium">
-              Password
-            </label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-              placeholder="Enter your password"
-            />
-          </div>
+              <FormInput
+                label="Email"
+                name="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="operator@example.com"
+                required
+                autoComplete="email"
+                disabled={isLoading}
+              />
 
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="inline-flex w-full items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
-          >
-            {isLoading ? 'Signing in...' : 'Sign In'}
-          </button>
-        </form>
+              <FormInput
+                label="Password"
+                name="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter your password"
+                required
+                autoComplete="current-password"
+                disabled={isLoading}
+              />
+            </CardContent>
+
+            <CardFooter>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={isLoading || !isFormValid}
+              >
+                {isLoading ? 'Signing in...' : 'Sign In'}
+              </Button>
+            </CardFooter>
+          </form>
+        </Card>
+
+        <p className="text-xs text-center text-muted-foreground mt-6">
+          This portal is restricted to authorized operators only.
+        </p>
       </div>
     </main>
   );

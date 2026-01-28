@@ -4,6 +4,7 @@ import React from 'react';
 import { useRouter } from 'next/navigation';
 import { clsx } from 'clsx';
 import { useAuthStore } from '@/lib/stores/auth-store';
+import { toast } from '@trades/ui/hooks';
 
 interface AdminHeaderProps {
   onMenuToggle?: () => void;
@@ -17,6 +18,10 @@ export function AdminHeader({ onMenuToggle, isSidebarOpen }: AdminHeaderProps) {
 
   const handleLogout = async () => {
     await logout();
+    toast.success({
+      title: 'Signed out',
+      description: 'You have been successfully signed out.',
+    });
     router.push('/login');
   };
 

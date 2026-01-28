@@ -428,8 +428,8 @@ test.describe('SMB Complete Job Workflow', () => {
     test('SMB dashboard shows job statistics', async ({ page }) => {
       await browserLogin(page, PORTALS.smb, TEST_USERS.smb.email, TEST_USERS.smb.password);
 
-      // Dashboard should show stats
-      await expect(page.getByText(/active jobs|pending|completed/i)).toBeVisible({ timeout: 10000 });
+      // Dashboard should show stats - use first() since multiple may match
+      await expect(page.getByText(/active jobs|pending|completed/i).first()).toBeVisible({ timeout: 10000 });
     });
 
     test('SMB can navigate to jobs list', async ({ page }) => {
